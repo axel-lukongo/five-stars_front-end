@@ -1,0 +1,15 @@
+version: "3.8"
+
+services:
+  flutter:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flutter_app
+    ports:
+      - "3000:3000"  # Expose le port pour accéder à l'application Flutter
+    volumes:
+      - .:/app       # Monte le répertoire actuel dans le conteneur pour le rechargement automatique
+      - /app/build   # Évite la copie du répertoire build local dans le conteneur
+    environment:
+      - FLUTTER_WEB_PORT=3000
