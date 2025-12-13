@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme_config/colors_config.dart';
-import '../app.dart';
+import 'package:provider/provider.dart';
+import '../providers/theme_provider.dart';
+import '../providers/auth_provider.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -20,7 +22,7 @@ class ProfilePage extends StatelessWidget {
               color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
             ),
             onPressed: () {
-              FootApp.of(context).toggleTheme();
+              Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
             },
           ),
           IconButton(
@@ -115,9 +117,10 @@ class ProfilePage extends StatelessWidget {
               const SizedBox(height: 40),
               ElevatedButton.icon(
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Déconnexion en cours...')),
-                  );
+                  Provider.of<AuthProvider>(context, listen: false).logout();
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(const SnackBar(content: Text('Déconnecté')));
                 },
                 icon: const Icon(Icons.logout, color: myAccentVibrantBlue),
                 label: const Text(
