@@ -1,232 +1,1941 @@
 import 'package:flutter/material.dart';
-import '../theme_config/colors_config.dart';
 
-class HomePage extends StatelessWidget {
+import 'package:provider/provider.dart';
+import '../theme_config/colors_config.dart';
+import '../providers/teams_provider.dart';
+import '../providers/friends_provider.dart';
+import '../services/teams_service.dart';
+import 'discover_teams_page.dart';
+import 'team_chat_page.dart';
+
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
   static const double _playerAvatarRadius = 25;
   static const double _playerAvatarDiameter = _playerAvatarRadius * 2;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<TeamsProvider>();
+      provider.loadMyTeam();
+      // Démarrer le polling pour les notifications en temps réel
+      provider.startChatPolling();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Arrêter le polling quand on quitte la page
+    // Note: Ne pas appeler stopChatPolling ici car le provider peut être réutilisé
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     final Color titleColor = isDarkMode ? myLightBackground : MyprimaryDark;
-    final Color pitchColor =
-        isDarkMode ? Colors.green[800]! : Colors.green[600]!;
-    final Color lineColor = isDarkMode ? Colors.white70 : Colors.white;
-
-    final List<String> substitutePlayers = <String>[
-      'Joueur A',
-      'Joueur B',
-      'Joueur C',
-      'Joueur D',
-    ];
 
     return Scaffold(
       appBar: AppBar(title: null),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              Text(
-                'Mon Équipe',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                ),
-              ),
-              const SizedBox(height: 20),
+      body: Consumer<TeamsProvider>(
+        builder: (context, teamsProvider, _) {
+          if (teamsProvider.state == TeamsLoadingState.loading &&
+              teamsProvider.allTeams.isEmpty) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-              // Mini terrain
-              Container(
-                height: 250,
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: pitchColor,
-                  borderRadius: BorderRadius.circular(15),
-                  border: Border.all(color: lineColor, width: 2),
-                ),
-                child: LayoutBuilder(
-                  builder: (BuildContext context, BoxConstraints constraints) {
-                    final double pitchWidth = constraints.maxWidth;
-                    const double pitchHeight = 250;
+          final allTeams = teamsProvider.allTeams;
+          final currentIndex = teamsProvider.currentTeamIndex;
 
-                    const double minPlayerLeftPos = 20;
-                    final double maxPlayerLeftPos =
-                        (pitchWidth / 2) - _playerAvatarDiameter - 20;
-
-                    final double segmentSpacing =
-                        (maxPlayerLeftPos - minPlayerLeftPos) / 4;
-
-                    return Stack(
-                      children: <Widget>[
-                        Positioned.fill(
-                          child: CustomPaint(painter: _PitchPainter(lineColor)),
-                        ),
-
-                        // Joueurs (5)
-                        Positioned(
-                          left: minPlayerLeftPos,
-                          top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                          child: _buildPlayerDisplay(
-                            'Gardien',
-                            'G',
-                            isDarkMode,
+          return RefreshIndicator(
+            onRefresh: () => teamsProvider.loadMyTeam(),
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    _buildTeamHeader(
+                      context: context,
+                      teamsProvider: teamsProvider,
+                      titleColor: titleColor,
+                      isDarkMode: isDarkMode,
+                    ),
+                    const SizedBox(height: 20),
+                    if (allTeams.isEmpty)
+                      _buildEmptyTeamPlaceholder(isDarkMode)
+                    else
+                      _buildTeamPitch(
+                        context,
+                        team: teamsProvider.currentDisplayedTeam!,
+                        isMyTeam: teamsProvider.isCurrentTeamMine,
+                        isDarkMode: isDarkMode,
+                      ),
+                    const SizedBox(height: 10),
+                    if (allTeams.length > 1)
+                      _buildPageIndicators(
+                        allTeams.length,
+                        currentIndex,
+                        isDarkMode,
+                      ),
+                    const SizedBox(height: 20),
+                    if (teamsProvider.isCurrentTeamMine)
+                      _buildSubstitutesSection(
+                        context,
+                        teamsProvider: teamsProvider,
+                        titleColor: titleColor,
+                        isDarkMode: isDarkMode,
+                      )
+                    else if (teamsProvider.currentDisplayedTeam != null)
+                      _buildOtherTeamSubstitutes(
+                        teamsProvider.currentDisplayedTeam!,
+                        titleColor: titleColor,
+                        isDarkMode: isDarkMode,
+                      ),
+                    const SizedBox(height: 20),
+                    // Indicateur de candidatures en attente
+                    if (teamsProvider.isCurrentTeamMine &&
+                        teamsProvider.pendingApplicationsCount > 0)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.orange.withOpacity(0.3),
                           ),
                         ),
-                        Positioned(
-                          left: minPlayerLeftPos + segmentSpacing,
-                          top: pitchHeight * 0.25 - _playerAvatarRadius - 15,
-                          child: _buildPlayerDisplay('Hugo', 'D1', isDarkMode),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.notifications_active,
+                              color: Colors.orange,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                '${teamsProvider.pendingApplicationsCount} candidature(s) en attente',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            TextButton(
+                              onPressed: () =>
+                                  _showAllApplicationsDialog(context),
+                              child: const Text('Voir'),
+                            ),
+                          ],
                         ),
-                        Positioned(
-                          left: minPlayerLeftPos + segmentSpacing,
-                          top: pitchHeight * 0.75 - _playerAvatarRadius - 15,
-                          child: _buildPlayerDisplay('Léo', 'D2', isDarkMode),
+                      ),
+                    const SizedBox(height: 10),
+                    // Bouton pour trouver une équipe
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const DiscoverTeamsPage(),
+                          ),
+                        );
+                      },
+                      icon: Icon(
+                        Icons.person_search,
+                        color: isDarkMode ? Colors.orange : Colors.orange[700],
+                      ),
+                      label: Text(
+                        'Trouver une équipe',
+                        style: TextStyle(
+                          color: isDarkMode
+                              ? Colors.orange
+                              : Colors.orange[700],
+                          fontWeight: FontWeight.bold,
                         ),
-                        Positioned(
-                          left: minPlayerLeftPos + 2 * segmentSpacing,
-                          top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                          child: _buildPlayerDisplay('Sam', 'M', isDarkMode),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
+                        side: BorderSide(
+                          color: isDarkMode
+                              ? Colors.orange
+                              : Colors.orange[700]!,
                         ),
-                        Positioned(
-                          left: minPlayerLeftPos + 3 * segmentSpacing,
-                          top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                          child: _buildPlayerDisplay('Tom', 'A', isDarkMode),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
                         ),
-                      ],
-                    );
-                  },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    // Bouton pour trouver des adversaires
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text("Recherche d'adversaires..."),
+                          ),
+                        );
+                      },
+                      icon: const Icon(
+                        Icons.sports_soccer,
+                        color: MyprimaryDark,
+                      ),
+                      label: const Text(
+                        'Trouver des adversaires',
+                        style: TextStyle(
+                          color: MyprimaryDark,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: myAccentVibrantBlue,
+                        minimumSize: const Size(double.infinity, 50),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        elevation: 5,
+                      ),
+                    ),
+                    const SizedBox(height: 90),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 20),
-
-              Text(
-                'Remplaçants',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                ),
-              ),
-              const SizedBox(height: 10),
-
-              Wrap(
-                spacing: 10.0,
-                runSpacing: 10.0,
-                children: substitutePlayers.map<Widget>((String playerName) {
-                  return _buildSubstitutePlayer(playerName, isDarkMode);
-                }).toList(),
-              ),
-
-              const SizedBox(height: 40),
-
-              ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text("Recherche d'adversaires...")),
-                  );
-                },
-                icon: const Icon(Icons.search, color: MyprimaryDark),
-                label: const Text(
-                  'Trouver des adversaires',
-                  style: TextStyle(
-                    color: MyprimaryDark,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: myAccentVibrantBlue,
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  elevation: 5,
-                ),
-              ),
-
-              const SizedBox(height: 90),
-            ],
-          ),
-        ),
+            ),
+          );
+        },
       ),
     );
   }
 
-  Widget _buildPlayerDisplay(String playerName, String label, bool isDarkMode) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: <Widget>[
-        CircleAvatar(
-          radius: _playerAvatarRadius,
-          backgroundColor: myAccentVibrantBlue,
-          child: Text(
-            label,
-            style: const TextStyle(
-              color: MyprimaryDark,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
+  /// Widget pour le bouton de chat avec badge de messages non lus
+  Widget _buildChatButton({
+    required BuildContext context,
+    required TeamDetail team,
+    required int unreadCount,
+    required bool isDarkMode,
+  }) {
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        IconButton(
+          icon: Icon(
+            Icons.chat_bubble_outline,
+            size: 18,
+            color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
+          ),
+          onPressed: () async {
+            await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TeamChatPage(
+                  teamId: team.id,
+                  teamName: team.name,
+                  teamLogoUrl: team.logoUrl,
+                ),
+              ),
+            );
+            // Recharger les chats pour mettre à jour le compteur
+            if (context.mounted) {
+              context.read<TeamsProvider>().loadMyTeamChats();
+            }
+          },
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+          tooltip: 'Chat d\'équipe',
+        ),
+        // Badge rouge pour les messages non lus
+        if (unreadCount > 0)
+          Positioned(
+            right: -4,
+            top: -4,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.red,
+                shape: BoxShape.circle,
+              ),
+              constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+              child: Text(
+                unreadCount > 99 ? '99+' : unreadCount.toString(),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          playerName,
-          style: TextStyle(
-            color: isDarkMode ? myLightBackground : MyprimaryDark,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
+      ],
+    );
+  }
+
+  Widget _buildTeamHeader({
+    required BuildContext context,
+    required TeamsProvider teamsProvider,
+    required Color titleColor,
+    required bool isDarkMode,
+  }) {
+    final currentTeam = teamsProvider.currentDisplayedTeam;
+    final isMyTeam = teamsProvider.isCurrentTeamMine;
+    final allTeams = teamsProvider.allTeams;
+
+    return Row(
+      children: [
+        IconButton(
+          icon: Icon(
+            Icons.chevron_left,
+            color: teamsProvider.canGoPrevious
+                ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
+                : Colors.grey.withOpacity(0.3),
+            size: 32,
           ),
+          onPressed: teamsProvider.canGoPrevious
+              ? () => teamsProvider.goToPreviousTeam()
+              : null,
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isMyTeam
+                          ? myAccentVibrantBlue.withOpacity(0.2)
+                          : Colors.orange.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      isMyTeam ? '👑 Mon équipe' : '👤 Membre',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isMyTeam ? myAccentVibrantBlue : Colors.orange,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  if (isMyTeam)
+                    IconButton(
+                      icon: Icon(
+                        Icons.edit,
+                        size: 16,
+                        color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
+                      ),
+                      onPressed: () => _showEditTeamNameDialog(context),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  // Bouton chat d'équipe avec badge de messages non lus
+                  if (currentTeam != null)
+                    _buildChatButton(
+                      context: context,
+                      team: currentTeam,
+                      unreadCount: teamsProvider.getUnreadCountForTeam(
+                        currentTeam.id,
+                      ),
+                      isDarkMode: isDarkMode,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                currentTeam?.name ?? 'Mon Équipe',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: titleColor,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (allTeams.length > 1)
+                Text(
+                  '${teamsProvider.currentTeamIndex + 1} / ${allTeams.length}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+            ],
+          ),
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.chevron_right,
+            color: teamsProvider.canGoNext
+                ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
+                : Colors.grey.withOpacity(0.3),
+            size: 32,
+          ),
+          onPressed: teamsProvider.canGoNext
+              ? () => teamsProvider.goToNextTeam()
+              : null,
         ),
       ],
     );
   }
 
-  Widget _buildSubstitutePlayer(String name, bool isDarkMode) {
+  Widget _buildPageIndicators(int count, int currentIndex, bool isDarkMode) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (index) {
+        final isActive = index == currentIndex;
+        return Container(
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          width: isActive ? 12 : 8,
+          height: isActive ? 12 : 8,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: isActive
+                ? myAccentVibrantBlue
+                : (isDarkMode ? Colors.grey[600] : Colors.grey[400]),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildEmptyTeamPlaceholder(bool isDarkMode) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      height: 250,
+      width: double.infinity,
       decoration: BoxDecoration(
-        color: isDarkMode ? MyprimaryDark.withOpacity(0.7) : Colors.grey[200],
-        borderRadius: BorderRadius.circular(20),
+        color: isDarkMode ? Colors.green[800]! : Colors.green[600]!,
+        borderRadius: BorderRadius.circular(15),
         border: Border.all(
-          color: isDarkMode
-              ? myAccentVibrantBlue.withOpacity(0.3)
-              : Colors.grey[300]!,
-          width: 1,
+          color: isDarkMode ? Colors.white70 : Colors.white,
+          width: 2,
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          CircleAvatar(
-            radius: 12,
-            backgroundColor: myAccentVibrantBlue.withOpacity(0.7),
-            child: Text(
-              name[0],
-              style: const TextStyle(
-                color: MyprimaryDark,
-                fontSize: 10,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.groups, size: 48, color: Colors.white.withOpacity(0.7)),
+            const SizedBox(height: 12),
+            Text(
+              'Aucune équipe',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.9),
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Ajoutez des amis pour créer votre équipe',
+              style: TextStyle(
+                color: Colors.white.withOpacity(0.7),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTeamPitch(
+    BuildContext context, {
+    required TeamDetail team,
+    required bool isMyTeam,
+    required bool isDarkMode,
+  }) {
+    final Color pitchColor = isDarkMode
+        ? Colors.green[800]!
+        : Colors.green[600]!;
+    final Color lineColor = isDarkMode ? Colors.white70 : Colors.white;
+    final starters = team.starters;
+
+    return Container(
+      height: 250,
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: pitchColor,
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: lineColor, width: 2),
+      ),
+      child: LayoutBuilder(
+        builder: (BuildContext context, BoxConstraints constraints) {
+          final double pitchWidth = constraints.maxWidth;
+          const double pitchHeight = 250;
+          const double minPlayerLeftPos = 20;
+          final double maxPlayerLeftPos =
+              (pitchWidth / 2) - _playerAvatarDiameter - 20;
+          final double segmentSpacing =
+              (maxPlayerLeftPos - minPlayerLeftPos) / 4;
+
+          return Stack(
+            children: <Widget>[
+              Positioned.fill(
+                child: CustomPaint(painter: _PitchPainter(lineColor)),
+              ),
+              Positioned(
+                left: minPlayerLeftPos,
+                top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                child: _buildPlayerSlot(
+                  context,
+                  slotIndex: 0,
+                  position: PlayerPosition.goalkeeper,
+                  member: _getMemberBySlot(starters, 0),
+                  isDarkMode: isDarkMode,
+                  isEditable: isMyTeam,
+                ),
+              ),
+              Positioned(
+                left: minPlayerLeftPos + segmentSpacing,
+                top: pitchHeight * 0.25 - _playerAvatarRadius - 15,
+                child: _buildPlayerSlot(
+                  context,
+                  slotIndex: 1,
+                  position: PlayerPosition.defender,
+                  member: _getMemberBySlot(starters, 1),
+                  isDarkMode: isDarkMode,
+                  isEditable: isMyTeam,
+                ),
+              ),
+              Positioned(
+                left: minPlayerLeftPos + segmentSpacing,
+                top: pitchHeight * 0.75 - _playerAvatarRadius - 15,
+                child: _buildPlayerSlot(
+                  context,
+                  slotIndex: 2,
+                  position: PlayerPosition.defender,
+                  member: _getMemberBySlot(starters, 2),
+                  isDarkMode: isDarkMode,
+                  isEditable: isMyTeam,
+                ),
+              ),
+              Positioned(
+                left: minPlayerLeftPos + 2 * segmentSpacing,
+                top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                child: _buildPlayerSlot(
+                  context,
+                  slotIndex: 3,
+                  position: PlayerPosition.midfielder,
+                  member: _getMemberBySlot(starters, 3),
+                  isDarkMode: isDarkMode,
+                  isEditable: isMyTeam,
+                ),
+              ),
+              Positioned(
+                left: minPlayerLeftPos + 3 * segmentSpacing,
+                top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                child: _buildPlayerSlot(
+                  context,
+                  slotIndex: 4,
+                  position: PlayerPosition.forward,
+                  member: _getMemberBySlot(starters, 4),
+                  isDarkMode: isDarkMode,
+                  isEditable: isMyTeam,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildSubstitutesSection(
+    BuildContext context, {
+    required TeamsProvider teamsProvider,
+    required Color titleColor,
+    required bool isDarkMode,
+  }) {
+    final myTeam = teamsProvider.myTeam;
+    final substitutes = myTeam?.substitutes ?? [];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'Remplaçants',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
+                color: titleColor,
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.add_circle, color: myAccentVibrantBlue),
+              onPressed: () => _showAddPlayerDialog(
+                context,
+                slotIndex: 5 + substitutes.length,
+                position: PlayerPosition.substitute,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (substitutes.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDarkMode
+                  ? MyprimaryDark.withOpacity(0.5)
+                  : Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'Aucun remplaçant\nAppuyez sur + pour ajouter',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 10.0,
+            runSpacing: 10.0,
+            children: substitutes
+                .map<Widget>(
+                  (member) => _buildSubstitutePlayer(
+                    member,
+                    isDarkMode,
+                    isEditable: true,
+                  ),
+                )
+                .toList(),
           ),
-          const SizedBox(width: 8),
-          Text(
-            name,
-            style: TextStyle(
-              color: isDarkMode ? myLightBackground : MyprimaryDark,
-              fontSize: 14,
+      ],
+    );
+  }
+
+  Widget _buildOtherTeamSubstitutes(
+    TeamDetail team, {
+    required Color titleColor,
+    required bool isDarkMode,
+  }) {
+    final substitutes = team.substitutes;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Remplaçants',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: titleColor,
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (substitutes.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDarkMode
+                  ? MyprimaryDark.withOpacity(0.5)
+                  : Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+              ),
+            ),
+            child: Center(
+              child: Text(
+                'Aucun remplaçant',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ),
+          )
+        else
+          Wrap(
+            spacing: 10.0,
+            runSpacing: 10.0,
+            children: substitutes
+                .map<Widget>(
+                  (member) => _buildSubstitutePlayer(
+                    member,
+                    isDarkMode,
+                    isEditable: false,
+                  ),
+                )
+                .toList(),
+          ),
+      ],
+    );
+  }
+
+  TeamMember? _getMemberBySlot(List<TeamMember> members, int slotIndex) {
+    try {
+      return members.firstWhere((m) => m.slotIndex == slotIndex);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Widget _buildPlayerSlot(
+    BuildContext context, {
+    required int slotIndex,
+    required PlayerPosition position,
+    TeamMember? member,
+    required bool isDarkMode,
+    required bool isEditable,
+  }) {
+    final teamsProvider = context.read<TeamsProvider>();
+    final isSlotOpen = isEditable && teamsProvider.isSlotOpen(slotIndex);
+    final openSlot = isEditable
+        ? teamsProvider.getOpenSlotForIndex(slotIndex)
+        : null;
+
+    if (member != null) {
+      return GestureDetector(
+        onTap: isEditable ? () => _showPlayerOptions(context, member) : null,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            CircleAvatar(
+              radius: _playerAvatarRadius,
+              backgroundColor: myAccentVibrantBlue,
+              backgroundImage: member.user.avatarUrl != null
+                  ? NetworkImage(member.user.avatarUrl!)
+                  : null,
+              child: member.user.avatarUrl == null
+                  ? Text(
+                      member.user.username.isNotEmpty
+                          ? member.user.username[0].toUpperCase()
+                          : position.shortName,
+                      style: const TextStyle(
+                        color: MyprimaryDark,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              member.user.username.length > 8
+                  ? '${member.user.username.substring(0, 8)}...'
+                  : member.user.username,
+              style: TextStyle(
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+                fontSize: 10,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Si le slot est en mode recherche
+    if (isSlotOpen && openSlot != null) {
+      return GestureDetector(
+        onTap: () => _showOpenSlotOptions(context, openSlot, position),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: _playerAvatarRadius,
+                  backgroundColor: Colors.orange.withOpacity(0.8),
+                  child: const Icon(
+                    Icons.person_search,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+                if (openSlot.applicationsCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${openSlot.applicationsCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Recherche',
+              style: TextStyle(
+                color: Colors.orange,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Slot vide
+    return GestureDetector(
+      onTap: isEditable
+          ? () => _showAddPlayerDialog(
+              context,
+              slotIndex: slotIndex,
+              position: position,
+            )
+          : null,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          CircleAvatar(
+            radius: _playerAvatarRadius,
+            backgroundColor: Colors.white.withOpacity(0.3),
+            child: Icon(
+              isEditable ? Icons.add : Icons.person_outline,
+              color: Colors.white.withOpacity(0.8),
+              size: 24,
             ),
           ),
-          const SizedBox(width: 8),
-          Icon(
-            Icons.add_circle_outline,
-            size: 18,
-            color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
+          const SizedBox(height: 4),
+          Text(
+            position.shortName,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.7),
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubstitutePlayer(
+    TeamMember member,
+    bool isDarkMode, {
+    required bool isEditable,
+  }) {
+    return GestureDetector(
+      onTap: isEditable ? () => _showPlayerOptions(context, member) : null,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDarkMode ? MyprimaryDark.withOpacity(0.7) : Colors.grey[200],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isDarkMode
+                ? myAccentVibrantBlue.withOpacity(0.3)
+                : Colors.grey[300]!,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            CircleAvatar(
+              radius: 12,
+              backgroundColor: myAccentVibrantBlue.withOpacity(0.7),
+              backgroundImage: member.user.avatarUrl != null
+                  ? NetworkImage(member.user.avatarUrl!)
+                  : null,
+              child: member.user.avatarUrl == null
+                  ? Text(
+                      member.user.username.isNotEmpty
+                          ? member.user.username[0].toUpperCase()
+                          : 'R',
+                      style: const TextStyle(
+                        color: MyprimaryDark,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              member.user.username,
+              style: TextStyle(
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(width: 4),
+            if (member.user.rating != null)
+              Text(
+                '⭐${member.user.rating!.toStringAsFixed(1)}',
+                style: const TextStyle(fontSize: 10),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showPlayerOptions(BuildContext context, TeamMember member) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 30,
+              backgroundColor: myAccentVibrantBlue,
+              backgroundImage: member.user.avatarUrl != null
+                  ? NetworkImage(member.user.avatarUrl!)
+                  : null,
+              child: member.user.avatarUrl == null
+                  ? Text(
+                      member.user.username[0].toUpperCase(),
+                      style: const TextStyle(
+                        color: MyprimaryDark,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(height: 10),
+            Text(
+              member.user.username,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+              ),
+            ),
+            Text(
+              member.position.displayName,
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.swap_horiz, color: myAccentVibrantBlue),
+              title: const Text('Changer de position'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showChangePositionDialog(context, member);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle, color: Colors.red),
+              title: const Text('Retirer de l\'équipe'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogCtx) => AlertDialog(
+                    title: const Text('Retirer ce joueur ?'),
+                    content: Text(
+                      'Voulez-vous retirer ${member.user.username} de l\'équipe ?',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogCtx, false),
+                        child: const Text('Annuler'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogCtx, true),
+                        child: const Text(
+                          'Retirer',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && context.mounted) {
+                  await context.read<TeamsProvider>().removeMemberFromMyTeam(
+                    member.user.id,
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAddPlayerDialog(
+    BuildContext context, {
+    required int slotIndex,
+    required PlayerPosition position,
+  }) async {
+    await context.read<FriendsProvider>().loadFriends();
+    if (!context.mounted) return;
+    final friends = context.read<FriendsProvider>().friends;
+    final teamsProvider = context.read<TeamsProvider>();
+    final availableFriends = friends
+        .where((f) => !teamsProvider.isUserInTeam(f.user.id))
+        .toList();
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (sheetCtx, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Ajouter un ${position.displayName}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDarkMode ? myLightBackground : MyprimaryDark,
+                ),
+              ),
+            ),
+            // Option pour mettre en mode recherche
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Colors.orange,
+                  child: Icon(Icons.person_search, color: Colors.white),
+                ),
+                title: const Text(
+                  'Mettre en mode recherche',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                subtitle: const Text(
+                  'Les joueurs de l\'app pourront postuler',
+                  style: TextStyle(fontSize: 12),
+                ),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showOpenSlotDialog(context, slotIndex, position);
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Row(
+                children: [
+                  Expanded(child: Divider(color: Colors.grey[400])),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    child: Text(
+                      'ou choisir un ami',
+                      style: TextStyle(color: Colors.grey[600], fontSize: 12),
+                    ),
+                  ),
+                  Expanded(child: Divider(color: Colors.grey[400])),
+                ],
+              ),
+            ),
+            if (availableFriends.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Text(
+                  'Tous vos amis sont déjà dans l\'équipe !',
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: availableFriends.length,
+                  itemBuilder: (listCtx, index) {
+                    final friend = availableFriends[index];
+                    return ListTile(
+                      leading: CircleAvatar(
+                        backgroundColor: MyprimaryDark,
+                        backgroundImage: friend.user.avatarUrl != null
+                            ? NetworkImage(friend.user.avatarUrl!)
+                            : null,
+                        child: friend.user.avatarUrl == null
+                            ? Text(
+                                friend.user.username[0].toUpperCase(),
+                                style: const TextStyle(
+                                  color: myAccentVibrantBlue,
+                                ),
+                              )
+                            : null,
+                      ),
+                      title: Text(friend.user.username),
+                      subtitle: Text(
+                        friend.user.preferredPosition ?? 'Position non définie',
+                      ),
+                      trailing: friend.user.rating != null
+                          ? Text('⭐ ${friend.user.rating!.toStringAsFixed(1)}')
+                          : null,
+                      onTap: () async {
+                        Navigator.pop(ctx);
+                        await teamsProvider.addMemberToMyTeam(
+                          userId: friend.user.id,
+                          position: position,
+                          slotIndex: slotIndex,
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showOpenSlotDialog(
+    BuildContext context,
+    int slotIndex,
+    PlayerPosition position,
+  ) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final descriptionController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+        title: Row(
+          children: [
+            const Icon(Icons.person_search, color: Colors.orange),
+            const SizedBox(width: 8),
+            Text(
+              'Rechercher un ${position.displayName}',
+              style: TextStyle(
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Les joueurs de l\'application pourront voir ce poste et postuler pour rejoindre votre équipe.',
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              maxLines: 3,
+              decoration: InputDecoration(
+                labelText: 'Description (optionnel)',
+                hintText: 'Ex: Recherche défenseur expérimenté...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: Text(
+              'Annuler',
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+              ),
+            ),
+          ),
+          ElevatedButton.icon(
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              final success = await context
+                  .read<TeamsProvider>()
+                  .openSlotForSearch(
+                    position: position,
+                    slotIndex: slotIndex,
+                    description: descriptionController.text.trim().isNotEmpty
+                        ? descriptionController.text.trim()
+                        : null,
+                  );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Poste ouvert à la recherche !'
+                          : 'Erreur lors de l\'ouverture du poste',
+                    ),
+                    backgroundColor: success ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.person_search, color: Colors.white),
+            label: const Text('Ouvrir'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showOpenSlotOptions(
+    BuildContext context,
+    OpenSlot openSlot,
+    PlayerPosition position,
+  ) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final teamsProvider = context.read<TeamsProvider>();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircleAvatar(
+              radius: 30,
+              backgroundColor: Colors.orange,
+              child: Icon(Icons.person_search, color: Colors.white, size: 30),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Poste ${position.displayName} en recherche',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+              ),
+            ),
+            if (openSlot.description != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                openSlot.description!,
+                style: TextStyle(
+                  color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Text(
+                '${openSlot.applicationsCount} candidature(s)',
+                style: const TextStyle(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            if (openSlot.applicationsCount > 0)
+              ListTile(
+                leading: const Icon(Icons.people, color: myAccentVibrantBlue),
+                title: const Text('Voir les candidatures'),
+                trailing: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${openSlot.applicationsCount}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showApplicationsDialog(context, openSlot);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.close, color: Colors.red),
+              title: const Text('Fermer la recherche'),
+              subtitle: const Text('Annuler la recherche pour ce poste'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (dialogCtx) => AlertDialog(
+                    title: const Text('Fermer la recherche ?'),
+                    content: const Text(
+                      'Les candidatures en attente seront annulées.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogCtx, false),
+                        child: const Text('Annuler'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogCtx, true),
+                        child: const Text(
+                          'Fermer',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true && context.mounted) {
+                  await teamsProvider.closeOpenSlot(openSlot.id);
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showApplicationsDialog(BuildContext context, OpenSlot openSlot) async {
+    final teamsProvider = context.read<TeamsProvider>();
+    await teamsProvider.loadReceivedApplications();
+
+    if (!context.mounted) return;
+
+    final applications = teamsProvider.receivedApplications
+        .where((a) => a.openSlotId == openSlot.id)
+        .toList();
+
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.6,
+        maxChildSize: 0.9,
+        minChildSize: 0.3,
+        expand: false,
+        builder: (sheetCtx, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                'Candidatures (${applications.length})',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDarkMode ? myLightBackground : MyprimaryDark,
+                ),
+              ),
+            ),
+            if (applications.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(40),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.inbox_outlined,
+                      size: 48,
+                      color: Colors.grey[400],
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Aucune candidature pour le moment',
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: applications.length,
+                  itemBuilder: (listCtx, index) {
+                    final app = applications[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: myAccentVibrantBlue,
+                                  backgroundImage:
+                                      app.applicant.avatarUrl != null
+                                      ? NetworkImage(app.applicant.avatarUrl!)
+                                      : null,
+                                  child: app.applicant.avatarUrl == null
+                                      ? Text(
+                                          app.applicant.username[0]
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: MyprimaryDark,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        app.applicant.username,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      if (app.applicant.rating != null)
+                                        Text(
+                                          '⭐ ${app.applicant.rating!.toStringAsFixed(1)}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (app.message != null &&
+                                app.message!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: isDarkMode
+                                      ? Colors.grey[800]
+                                      : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '"${app.message}"',
+                                  style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: isDarkMode
+                                        ? Colors.grey[300]
+                                        : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await teamsProvider.rejectApplication(
+                                      app.id,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Candidature refusée'),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                  ),
+                                  label: const Text(
+                                    'Refuser',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    await teamsProvider.acceptApplication(
+                                      app.id,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Joueur ajouté à l\'équipe !',
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                  ),
+                                  label: const Text('Accepter'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showAllApplicationsDialog(BuildContext context) async {
+    final teamsProvider = context.read<TeamsProvider>();
+    await teamsProvider.loadReceivedApplications();
+
+    if (!context.mounted) return;
+
+    final applications = teamsProvider.receivedApplications;
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => DraggableScrollableSheet(
+        initialChildSize: 0.7,
+        maxChildSize: 0.9,
+        minChildSize: 0.4,
+        expand: false,
+        builder: (sheetCtx, scrollController) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  const Icon(Icons.inbox, color: myAccentVibrantBlue),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Toutes les candidatures (${applications.length})',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode ? myLightBackground : MyprimaryDark,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (applications.isEmpty)
+              Expanded(
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.inbox_outlined,
+                        size: 48,
+                        color: Colors.grey[400],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Aucune candidature en attente',
+                        style: TextStyle(
+                          color: isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              Expanded(
+                child: ListView.builder(
+                  controller: scrollController,
+                  itemCount: applications.length,
+                  itemBuilder: (listCtx, index) {
+                    final app = applications[index];
+                    // Trouver le slot correspondant
+                    final openSlot = teamsProvider.myOpenSlots
+                        .where((s) => s.id == app.openSlotId)
+                        .firstOrNull;
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                CircleAvatar(
+                                  backgroundColor: myAccentVibrantBlue,
+                                  backgroundImage:
+                                      app.applicant.avatarUrl != null
+                                      ? NetworkImage(app.applicant.avatarUrl!)
+                                      : null,
+                                  child: app.applicant.avatarUrl == null
+                                      ? Text(
+                                          app.applicant.username[0]
+                                              .toUpperCase(),
+                                          style: const TextStyle(
+                                            color: MyprimaryDark,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        )
+                                      : null,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        app.applicant.username,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 16,
+                                        ),
+                                      ),
+                                      if (openSlot != null)
+                                        Text(
+                                          'Pour : ${openSlot.position.displayName}',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                ),
+                                if (app.applicant.rating != null)
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.amber.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      '⭐ ${app.applicant.rating!.toStringAsFixed(1)}',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            if (app.message != null &&
+                                app.message!.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: isDarkMode
+                                      ? Colors.grey[800]
+                                      : Colors.grey[100],
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  '"${app.message}"',
+                                  style: TextStyle(
+                                    fontStyle: FontStyle.italic,
+                                    color: isDarkMode
+                                        ? Colors.grey[300]
+                                        : Colors.grey[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    await teamsProvider.rejectApplication(
+                                      app.id,
+                                    );
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Candidature refusée'),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.red,
+                                    size: 16,
+                                  ),
+                                  label: const Text(
+                                    'Refuser',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                ElevatedButton.icon(
+                                  onPressed: () async {
+                                    await teamsProvider.acceptApplication(
+                                      app.id,
+                                    );
+                                    if (context.mounted) {
+                                      Navigator.pop(ctx);
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text(
+                                            'Joueur ajouté à l\'équipe !',
+                                          ),
+                                          backgroundColor: Colors.green,
+                                        ),
+                                      );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.check,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                  label: const Text(
+                                    'Accepter',
+                                    style: TextStyle(fontSize: 12),
+                                  ),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.green,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showChangePositionDialog(BuildContext context, TeamMember member) {
+    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Changer la position de ${member.user.username}',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? myLightBackground : MyprimaryDark,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...PlayerPosition.values.map(
+              (position) => ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: member.position == position
+                      ? myAccentVibrantBlue
+                      : Colors.grey,
+                  child: Text(
+                    position.shortName,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                title: Text(position.displayName),
+                trailing: member.position == position
+                    ? const Icon(Icons.check, color: myAccentVibrantBlue)
+                    : null,
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  int newSlotIndex = member.slotIndex;
+                  if (position == PlayerPosition.substitute &&
+                      member.slotIndex < 5) {
+                    newSlotIndex = 5;
+                  } else if (position != PlayerPosition.substitute &&
+                      member.slotIndex >= 5) {
+                    switch (position) {
+                      case PlayerPosition.goalkeeper:
+                        newSlotIndex = 0;
+                        break;
+                      case PlayerPosition.defender:
+                        newSlotIndex = 1;
+                        break;
+                      case PlayerPosition.midfielder:
+                        newSlotIndex = 3;
+                        break;
+                      case PlayerPosition.forward:
+                        newSlotIndex = 4;
+                        break;
+                      default:
+                        break;
+                    }
+                  }
+                  await context.read<TeamsProvider>().updateMemberPosition(
+                    userId: member.user.id,
+                    position: position,
+                    slotIndex: newSlotIndex,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEditTeamNameDialog(BuildContext context) {
+    final teamsProvider = context.read<TeamsProvider>();
+    final controller = TextEditingController(
+      text: teamsProvider.myTeam?.name ?? 'Mon Équipe',
+    );
+    showDialog(
+      context: context,
+      builder: (dialogCtx) => AlertDialog(
+        title: const Text('Nom de l\'équipe'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Nom',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Annuler'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(dialogCtx);
+              if (controller.text.trim().isNotEmpty) {
+                final currentMembers = teamsProvider.myTeam?.members ?? [];
+                await teamsProvider.saveMyTeamComposition(
+                  name: controller.text.trim(),
+                  members: currentMembers
+                      .map(
+                        (m) => MyTeamMemberInput(
+                          userId: m.user.id,
+                          position: m.position,
+                          slotIndex: m.slotIndex,
+                        ),
+                      )
+                      .toList(),
+                );
+              }
+            },
+            child: const Text('Enregistrer'),
           ),
         ],
       ),
@@ -236,7 +1945,6 @@ class HomePage extends StatelessWidget {
 
 class _PitchPainter extends CustomPainter {
   final Color lineColor;
-
   _PitchPainter(this.lineColor);
 
   @override
@@ -245,25 +1953,17 @@ class _PitchPainter extends CustomPainter {
       ..color = lineColor
       ..strokeWidth = 2.0
       ..style = PaintingStyle.stroke;
-
-    // Rectangle extérieur
     canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
-
-    // Ligne médiane
     canvas.drawLine(
       Offset(size.width / 2, 0),
       Offset(size.width / 2, size.height),
       paint,
     );
-
-    // Cercle central
     canvas.drawCircle(
       Offset(size.width / 2, size.height / 2),
       size.height * 0.15,
       paint,
     );
-
-    // Surfaces
     canvas.drawRect(
       Rect.fromLTWH(
         0,

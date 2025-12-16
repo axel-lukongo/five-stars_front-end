@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
 import 'theme_config/colors_config.dart';
 import 'pages/map_page.dart';
 import 'pages/home_page.dart';
 import 'pages/friends_list_page.dart';
 import 'pages/profile_page.dart';
-import 'auth/login.dart';
+import 'providers/messages_provider.dart';
 
 class FootApp extends StatefulWidget {
   const FootApp({super.key});
@@ -121,6 +122,17 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Initialiser le WebSocket et charger les conversations
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final messagesProvider = context.read<MessagesProvider>();
+      messagesProvider.initWebSocket();
+      messagesProvider.loadConversations();
+    });
+  }
 
   static const List<Widget> _widgetOptions = <Widget>[
     MapPage(),
