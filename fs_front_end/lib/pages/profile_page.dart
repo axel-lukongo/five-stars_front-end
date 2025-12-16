@@ -5,6 +5,7 @@ import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/user_model.dart';
 import '../auth/login.dart';
+import 'edit_profile_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({super.key});
@@ -50,10 +51,9 @@ class ProfilePage extends StatelessWidget {
                   color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
                 ),
                 onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Ouvrir l\'édition du profil'),
-                    ),
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const EditProfilePage()),
                   );
                 },
               ),

@@ -35,26 +35,29 @@ class _LoginPageState extends State<LoginPage> {
     super.dispose();
   }
 
-  void _login() {
+  void _login() async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final username = usernameController.text.trim();
     final password = passwordController.text;
 
-    auth.login(username, password).then((res) {
-      if (res['ok'] == true) {
-        // Remplace la route par l'écran principal
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const MainScreen()),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(res['message']?.toString() ?? 'Erreur de connexion'),
-          ),
-        );
-      }
-    });
+    final res = await auth.login(username, password);
+
+    // Vérifier que le widget est toujours monté avant d'utiliser le context
+    if (!mounted) return;
+
+    if (res['ok'] == true) {
+      // Remplace la route par l'écran principal
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(res['message']?.toString() ?? 'Erreur de connexion'),
+        ),
+      );
+    }
   }
 
   @override
