@@ -37,10 +37,10 @@ class _LoginPageState extends State<LoginPage> {
 
   void _login() {
     final auth = Provider.of<AuthProvider>(context, listen: false);
-    final email = usernameController.text.trim();
+    final username = usernameController.text.trim();
     final password = passwordController.text;
 
-    auth.login(email, password).then((res) {
+    auth.login(username, password).then((res) {
       if (res['ok'] == true) {
         // Remplace la route par l'écran principal
         Navigator.pushReplacement(

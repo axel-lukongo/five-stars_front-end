@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../models/user_model.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _service = AuthService.instance;
 
   bool _isAuthenticated = false;
   bool _isLoading = true;
+  UserModel? _currentUser;
 
   bool get isAuthenticated => _isAuthenticated;
   bool get isLoading => _isLoading;
+  UserModel? get currentUser => _currentUser;
 
   AuthProvider() {
     // lance l'initialisation
@@ -25,16 +28,30 @@ class AuthProvider extends ChangeNotifier {
     } else {
       _isAuthenticated = true;
     }
+
+    // Charger les infos utilisateur si authentifié
+    if (_isAuthenticated) {
+      await _loadCurrentUser();
+    }
+
     _isLoading = false;
     notifyListeners();
   }
 
-  Future<Map<String, dynamic>> login(String email, String password) async {
+  Future<void> _loadCurrentUser() async {
+    final userData = await _service.getCurrentUser();
+    if (userData != null) {
+      _currentUser = UserModel.fromJson(userData);
+    }
+  }
+
+  Future<Map<String, dynamic>> login(String username, String password) async {
     _isLoading = true;
     notifyListeners();
-    final res = await _service.login(email: email, password: password);
+    final res = await _service.login(username: username, password: password);
     if (res['ok'] == true) {
       _isAuthenticated = true;
+      await _loadCurrentUser();
     }
     _isLoading = false;
     notifyListeners();
@@ -58,9 +75,16 @@ class AuthProvider extends ChangeNotifier {
     return res;
   }
 
+  /// Recharge les informations de l'utilisateur depuis le serveur
+  Future<void> refreshCurrentUser() async {
+    await _loadCurrentUser();
+    notifyListeners();
+  }
+
   Future<void> logout() async {
     await _service.logout();
     _isAuthenticated = false;
+    _currentUser = null;
     notifyListeners();
   }
 }
