@@ -11,6 +11,7 @@ class UserModel {
   final int matchesPlayed;
   final int matchesWon;
   final int matchesLost;
+  final int matchesDrawn;
 
   UserModel({
     required this.id,
@@ -24,6 +25,7 @@ class UserModel {
     this.matchesPlayed = 0,
     this.matchesWon = 0,
     this.matchesLost = 0,
+    this.matchesDrawn = 0,
   });
 
   /// Crée un UserModel à partir d'un JSON (réponse API)
@@ -40,6 +42,7 @@ class UserModel {
       matchesPlayed: json['matches_played'] as int? ?? 0,
       matchesWon: json['matches_won'] as int? ?? 0,
       matchesLost: json['matches_lost'] as int? ?? 0,
+      matchesDrawn: json['matches_drawn'] as int? ?? 0,
     );
   }
 
@@ -57,6 +60,7 @@ class UserModel {
       'matches_played': matchesPlayed,
       'matches_won': matchesWon,
       'matches_lost': matchesLost,
+      'matches_drawn': matchesDrawn,
     };
   }
 

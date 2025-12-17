@@ -50,5 +50,9 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Five Stars a besoin de votre position pour trouver les terrains de foot à proximité.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Five Stars a besoin de votre position pour trouver les terrains de foot à proximité.</string>
 </dict>
 </plist>

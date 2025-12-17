@@ -5,6 +5,7 @@ import '../providers/friends_provider.dart';
 import '../providers/messages_provider.dart';
 import '../services/friends_service.dart';
 import 'chat_page.dart';
+import 'user_profile_page.dart';
 
 class FriendsListPage extends StatefulWidget {
   const FriendsListPage({super.key});
@@ -305,7 +306,17 @@ class _FriendsListPageState extends State<FriendsListPage>
             ),
             PopupMenuButton<String>(
               onSelected: (value) async {
-                if (value == 'remove') {
+                if (value == 'profile') {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => UserProfilePage(
+                        userBasicInfo: friend.user,
+                        showAddFriendButton: false,
+                      ),
+                    ),
+                  );
+                } else if (value == 'remove') {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
@@ -336,6 +347,16 @@ class _FriendsListPageState extends State<FriendsListPage>
                 }
               },
               itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'profile',
+                  child: Row(
+                    children: [
+                      Icon(Icons.person, color: myAccentVibrantBlue),
+                      SizedBox(width: 8),
+                      Text('Voir le profil'),
+                    ],
+                  ),
+                ),
                 const PopupMenuItem(
                   value: 'remove',
                   child: Row(
@@ -429,6 +450,18 @@ class _FriendsListPageState extends State<FriendsListPage>
       margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
+        onTap: () {
+          // Naviguer vers le profil de l'utilisateur
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UserProfilePage(
+                userBasicInfo: request.fromUser,
+                showAddFriendButton: false,
+              ),
+            ),
+          );
+        },
         leading: CircleAvatar(
           radius: 25,
           backgroundColor: MyprimaryDark,
@@ -492,6 +525,18 @@ class _FriendsListPageState extends State<FriendsListPage>
       margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
+        onTap: () {
+          // Naviguer vers le profil de l'utilisateur
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UserProfilePage(
+                userBasicInfo: request.user,
+                showAddFriendButton: false,
+              ),
+            ),
+          );
+        },
         leading: CircleAvatar(
           radius: 25,
           backgroundColor: MyprimaryDark,
@@ -614,6 +659,18 @@ class _FriendsListPageState extends State<FriendsListPage>
       margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
       child: ListTile(
         contentPadding: const EdgeInsets.all(12),
+        onTap: () {
+          // Naviguer vers le profil de l'utilisateur
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => UserProfilePage(
+                userBasicInfo: result.user,
+                showAddFriendButton: result.friendshipStatus != 'accepted',
+              ),
+            ),
+          );
+        },
         leading: CircleAvatar(
           radius: 25,
           backgroundColor: MyprimaryDark,

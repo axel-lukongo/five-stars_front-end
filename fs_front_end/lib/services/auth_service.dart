@@ -239,4 +239,24 @@ class AuthService {
     if (access == null) return null;
     return 'Bearer $access';
   }
+
+  /// Récupère le profil public d'un utilisateur par son ID
+  Future<Map<String, dynamic>?> getUserProfile(int userId) async {
+    final authHeader = await getAuthHeader();
+    if (authHeader == null) return null;
+
+    final url = Uri.parse('$baseUrl/users/$userId');
+    final resp = await http.get(
+      url,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+      },
+    );
+
+    if (resp.statusCode == 200) {
+      return jsonDecode(resp.body) as Map<String, dynamic>;
+    }
+    return null;
+  }
 }

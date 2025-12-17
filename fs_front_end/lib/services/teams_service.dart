@@ -676,6 +676,491 @@ class TeamsService {
   void markTeamMessagesAsReadRealtime() {
     _sendTeamChatAction({'action': 'mark_read'});
   }
+
+  // ============================================================
+  // Recherche d'adversaires
+  // ============================================================
+
+  /// Met à jour les préférences de recherche d'adversaire
+  Future<TeamSearchPreference?> updateSearchPreferences(
+    int teamId, {
+    required bool isLookingForOpponent,
+    List<String>? preferredDays,
+    List<String>? preferredTimeSlots,
+    String? preferredLocations,
+    String? skillLevel,
+    String? description,
+  }) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/teams/$teamId/search-preferences'),
+        headers: await _headers,
+        body: jsonEncode({
+          'is_looking_for_opponent': isLookingForOpponent,
+          'preferred_days': preferredDays,
+          'preferred_time_slots': preferredTimeSlots,
+          'preferred_locations': preferredLocations,
+          'skill_level': skillLevel,
+          'description': description,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return TeamSearchPreference.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur updateSearchPreferences: $e');
+      return null;
+    }
+  }
+
+  /// Récupère les préférences de recherche d'une équipe
+  Future<TeamSearchPreference?> getSearchPreferences(int teamId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/teams/$teamId/search-preferences'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        return TeamSearchPreference.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur getSearchPreferences: $e');
+      return null;
+    }
+  }
+
+  /// Recherche les équipes en recherche d'adversaire
+  Future<List<TeamSearchResult>> searchOpponents({String? skillLevel}) async {
+    try {
+      var url = '$baseUrl/opponents/search';
+      if (skillLevel != null) {
+        url += '?skill_level=$skillLevel';
+      }
+
+      final response = await http.get(Uri.parse(url), headers: await _headers);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => TeamSearchResult.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Erreur searchOpponents: $e');
+      return [];
+    }
+  }
+
+  // ============================================================
+  // Défis de matchs
+  // ============================================================
+
+  /// Crée un défi envers une autre équipe
+  Future<MatchChallenge?> createChallenge({
+    required int challengedTeamId,
+    DateTime? proposedDate,
+    String? proposedLocation,
+    String? message,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/challenges'),
+        headers: await _headers,
+        body: jsonEncode({
+          'challenged_team_id': challengedTeamId,
+          'proposed_date': proposedDate?.toIso8601String(),
+          'proposed_location': proposedLocation,
+          'message': message,
+        }),
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        return MatchChallenge.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur createChallenge: $e');
+      return null;
+    }
+  }
+
+  /// Récupère les défis envoyés
+  Future<List<MatchChallenge>> getSentChallenges() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/challenges/sent'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => MatchChallenge.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Erreur getSentChallenges: $e');
+      return [];
+    }
+  }
+
+  /// Récupère les défis reçus
+  Future<List<MatchChallenge>> getReceivedChallenges() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/challenges/received'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => MatchChallenge.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Erreur getReceivedChallenges: $e');
+      return [];
+    }
+  }
+
+  /// Répond à un défi (accepter ou refuser)
+  Future<MatchChallenge?> respondToChallenge(
+    int challengeId, {
+    required bool accept,
+    String? responseMessage,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/challenges/$challengeId/respond'),
+        headers: await _headers,
+        body: jsonEncode({
+          'action': accept ? 'accept' : 'reject',
+          'response_message': responseMessage,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return MatchChallenge.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur respondToChallenge: $e');
+      return null;
+    }
+  }
+
+  /// Soumet le score d'un match (validation mutuelle)
+  /// myScore = score de mon équipe
+  /// opponentScore = score de l'équipe adverse
+  Future<MatchChallenge?> submitMatchScore(
+    int challengeId, {
+    required int myScore,
+    required int opponentScore,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/challenges/$challengeId/score'),
+        headers: await _headers,
+        body: jsonEncode({
+          'my_score': myScore,
+          'opponent_score': opponentScore,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return MatchChallenge.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur submitMatchScore: $e');
+      return null;
+    }
+  }
+
+  /// Valide ou conteste le score soumis par l'adversaire
+  /// validate = true pour valider, false pour contester (match nul)
+  Future<MatchChallenge?> validateMatchScore(
+    int challengeId, {
+    required bool validate,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/challenges/$challengeId/validate'),
+        headers: await _headers,
+        body: jsonEncode({'validate': validate}),
+      );
+
+      if (response.statusCode == 200) {
+        return MatchChallenge.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur validateMatchScore: $e');
+      return null;
+    }
+  }
+
+  /// Récupère les matchs d'une équipe
+  /// status = "accepted" pour les matchs à venir, "completed" pour les terminés, null pour tous
+  Future<List<MatchChallenge>> getTeamMatches(
+    int teamId, {
+    String? status,
+  }) async {
+    try {
+      var url = '$baseUrl/teams/$teamId/matches';
+      if (status != null) {
+        url += '?status=$status';
+      }
+
+      final response = await http.get(Uri.parse(url), headers: await _headers);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => MatchChallenge.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Erreur getTeamMatches: $e');
+      return [];
+    }
+  }
+
+  /// Annule un défi
+  Future<bool> cancelChallenge(int challengeId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/challenges/$challengeId'),
+        headers: await _headers,
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('Erreur cancelChallenge: $e');
+      return false;
+    }
+  }
+
+  // ============================================================
+  // Match Chat - Messagerie de match
+  // ============================================================
+
+  // WebSocket pour le chat de match
+  WebSocketChannel? _matchChatChannel;
+  StreamSubscription? _matchChatSubscription;
+  bool _isMatchChatConnected = false;
+  int? _connectedChallengeId;
+  Timer? _matchChatPingTimer;
+
+  // Callbacks pour le chat de match
+  void Function(MatchChatMessage message)? onNewMatchMessage;
+  VoidCallback? onMatchChatConnected;
+  VoidCallback? onMatchChatDisconnected;
+
+  bool get isMatchChatConnected => _isMatchChatConnected;
+  int? get connectedChallengeId => _connectedChallengeId;
+
+  /// Connecte au WebSocket du chat de match
+  Future<bool> connectToMatchChat(int challengeId) async {
+    // Déjà connecté à ce chat
+    if (_isMatchChatConnected && _connectedChallengeId == challengeId) {
+      return true;
+    }
+
+    // Déconnecter de l'ancien chat si nécessaire
+    await disconnectFromMatchChat();
+
+    try {
+      final token = await AuthService.instance.getAccessToken();
+      if (token == null) {
+        debugPrint('Pas de token pour le match chat');
+        return false;
+      }
+
+      final wsUri = Uri.parse('$wsUrl/ws/match-chat/$challengeId/$token');
+      debugPrint('Connexion au match chat: $wsUri');
+
+      _matchChatChannel = WebSocketChannel.connect(wsUri);
+      _connectedChallengeId = challengeId;
+
+      _matchChatSubscription = _matchChatChannel!.stream.listen(
+        (data) {
+          try {
+            final json = jsonDecode(data as String);
+            final message = MatchChatMessage.fromJson(json);
+            onNewMatchMessage?.call(message);
+          } catch (e) {
+            debugPrint('Erreur parsing match message: $e');
+          }
+        },
+        onDone: () {
+          debugPrint('Match chat WebSocket fermé');
+          _handleMatchChatDisconnect();
+        },
+        onError: (error) {
+          debugPrint('Erreur Match chat WebSocket: $error');
+          _handleMatchChatDisconnect();
+        },
+      );
+
+      _isMatchChatConnected = true;
+      onMatchChatConnected?.call();
+
+      // Ping pour garder la connexion active
+      _matchChatPingTimer?.cancel();
+      _matchChatPingTimer = Timer.periodic(
+        const Duration(seconds: 30),
+        (_) => _sendMatchChatPing(),
+      );
+
+      return true;
+    } catch (e) {
+      debugPrint('Erreur connexion match chat: $e');
+      _handleMatchChatDisconnect();
+      return false;
+    }
+  }
+
+  void _sendMatchChatPing() {
+    if (_isMatchChatConnected && _matchChatChannel != null) {
+      try {
+        _matchChatChannel!.sink.add(jsonEncode({'type': 'ping'}));
+      } catch (e) {
+        debugPrint('Erreur ping match chat: $e');
+      }
+    }
+  }
+
+  void _handleMatchChatDisconnect() {
+    _isMatchChatConnected = false;
+    _connectedChallengeId = null;
+    _matchChatPingTimer?.cancel();
+    _matchChatSubscription?.cancel();
+    onMatchChatDisconnected?.call();
+  }
+
+  /// Déconnecte du WebSocket du chat de match
+  Future<void> disconnectFromMatchChat() async {
+    _matchChatPingTimer?.cancel();
+    _matchChatSubscription?.cancel();
+
+    if (_matchChatChannel != null) {
+      try {
+        await _matchChatChannel!.sink.close();
+      } catch (e) {
+        debugPrint('Erreur fermeture match chat: $e');
+      }
+    }
+
+    _matchChatChannel = null;
+    _isMatchChatConnected = false;
+    _connectedChallengeId = null;
+  }
+
+  /// Envoie un message via WebSocket
+  void sendMatchMessageWs(String content) {
+    if (_isMatchChatConnected && _matchChatChannel != null) {
+      _matchChatChannel!.sink.add(jsonEncode({'content': content}));
+    }
+  }
+
+  /// Récupère les messages d'un match (REST)
+  Future<List<MatchChatMessage>> getMatchMessages(int challengeId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/challenges/$challengeId/messages'),
+        headers: await _headers,
+      );
+
+      debugPrint('getMatchMessages status: ${response.statusCode}');
+      debugPrint('getMatchMessages body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.map((e) => MatchChatMessage.fromJson(e)).toList();
+      }
+      return [];
+    } catch (e) {
+      debugPrint('Erreur getMatchMessages: $e');
+      return [];
+    }
+  }
+
+  /// Envoie un message (REST, alternative au WebSocket)
+  Future<MatchChatMessage?> sendMatchMessage(
+    int challengeId,
+    String content,
+  ) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/challenges/$challengeId/messages'),
+        headers: await _headers,
+        body: jsonEncode({'content': content}),
+      );
+
+      if (response.statusCode == 200) {
+        return MatchChatMessage.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur sendMatchMessage: $e');
+      return null;
+    }
+  }
+
+  /// Marque les messages comme lus
+  Future<void> markMatchMessagesAsRead(int challengeId) async {
+    try {
+      await http.put(
+        Uri.parse('$baseUrl/challenges/$challengeId/messages/read'),
+        headers: await _headers,
+      );
+    } catch (e) {
+      debugPrint('Erreur markMatchMessagesAsRead: $e');
+    }
+  }
+
+  /// Récupère le nombre de messages non lus pour un match
+  Future<int> getUnreadMessagesCount(int challengeId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/challenges/$challengeId/messages/unread-count'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['unread_count'] as int? ?? 0;
+      }
+      return 0;
+    } catch (e) {
+      debugPrint('Erreur getUnreadMessagesCount: $e');
+      return 0;
+    }
+  }
+
+  /// Récupère les messages non lus pour tous les matchs
+  Future<Map<int, int>> getAllUnreadCounts() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/my-matches/unread-counts'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final matchesUnread = data['matches_unread'] as Map<String, dynamic>;
+        return matchesUnread.map(
+          (key, value) => MapEntry(int.parse(key), value as int),
+        );
+      }
+      return {};
+    } catch (e) {
+      debugPrint('Erreur getAllUnreadCounts: $e');
+      return {};
+    }
+  }
 }
 
 // ============================================================
@@ -1077,6 +1562,322 @@ class TeamChatInfo {
           ? TeamChatMessage.fromJson(json['last_message'])
           : null,
       unreadCount: json['unread_count'] as int? ?? 0,
+    );
+  }
+}
+
+/// Statut d'un défi
+enum ChallengeStatus {
+  pending,
+  accepted,
+  rejected,
+  cancelled,
+  expired,
+  completed;
+
+  String get displayName {
+    switch (this) {
+      case ChallengeStatus.pending:
+        return 'En attente';
+      case ChallengeStatus.accepted:
+        return 'Accepté';
+      case ChallengeStatus.rejected:
+        return 'Refusé';
+      case ChallengeStatus.cancelled:
+        return 'Annulé';
+      case ChallengeStatus.expired:
+        return 'Expiré';
+      case ChallengeStatus.completed:
+        return 'Terminé';
+    }
+  }
+
+  static ChallengeStatus fromString(String value) {
+    return ChallengeStatus.values.firstWhere(
+      (e) => e.name == value.toLowerCase(),
+      orElse: () => ChallengeStatus.pending,
+    );
+  }
+}
+
+/// Préférences de recherche d'adversaire
+class TeamSearchPreference {
+  final int teamId;
+  final bool isLookingForOpponent;
+  final List<String>? preferredDays;
+  final List<String>? preferredTimeSlots;
+  final String? preferredLocations;
+  final String? skillLevel;
+  final String? description;
+  final DateTime? updatedAt;
+
+  TeamSearchPreference({
+    required this.teamId,
+    required this.isLookingForOpponent,
+    this.preferredDays,
+    this.preferredTimeSlots,
+    this.preferredLocations,
+    this.skillLevel,
+    this.description,
+    this.updatedAt,
+  });
+
+  factory TeamSearchPreference.fromJson(Map<String, dynamic> json) {
+    return TeamSearchPreference(
+      teamId: json['team_id'] as int,
+      isLookingForOpponent: json['is_looking_for_opponent'] as bool? ?? false,
+      preferredDays: (json['preferred_days'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      preferredTimeSlots: (json['preferred_time_slots'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      preferredLocations: json['preferred_locations'] as String?,
+      skillLevel: json['skill_level'] as String?,
+      description: json['description'] as String?,
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'])
+          : null,
+    );
+  }
+}
+
+/// Équipe en recherche d'adversaire
+class TeamSearchResult {
+  final int teamId;
+  final String teamName;
+  final String? teamLogoUrl;
+  final String ownerUsername;
+  final int membersCount;
+  final String? skillLevel;
+  final List<String>? preferredDays;
+  final List<String>? preferredTimeSlots;
+  final String? preferredLocations;
+  final String? description;
+
+  TeamSearchResult({
+    required this.teamId,
+    required this.teamName,
+    this.teamLogoUrl,
+    required this.ownerUsername,
+    required this.membersCount,
+    this.skillLevel,
+    this.preferredDays,
+    this.preferredTimeSlots,
+    this.preferredLocations,
+    this.description,
+  });
+
+  factory TeamSearchResult.fromJson(Map<String, dynamic> json) {
+    return TeamSearchResult(
+      teamId: json['team_id'] as int,
+      teamName: json['team_name'] as String,
+      teamLogoUrl: json['team_logo_url'] as String?,
+      ownerUsername: json['owner_username'] as String,
+      membersCount: json['members_count'] as int? ?? 0,
+      skillLevel: json['skill_level'] as String?,
+      preferredDays: (json['preferred_days'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      preferredTimeSlots: (json['preferred_time_slots'] as List<dynamic>?)
+          ?.map((e) => e.toString())
+          .toList(),
+      preferredLocations: json['preferred_locations'] as String?,
+      description: json['description'] as String?,
+    );
+  }
+}
+
+/// Défi de match entre deux équipes
+class MatchChallenge {
+  final int id;
+  final int challengerTeamId;
+  final String challengerTeamName;
+  final String? challengerTeamLogoUrl;
+  final String challengerOwnerUsername;
+  final int challengedTeamId;
+  final String challengedTeamName;
+  final String? challengedTeamLogoUrl;
+  final String challengedOwnerUsername;
+  final ChallengeStatus status;
+  final DateTime? proposedDate;
+  final String? proposedLocation;
+  final String? message;
+  final String? responseMessage;
+  final int? challengerScore;
+  final int? challengedScore;
+  // Validation mutuelle du score
+  final bool challengerScoreSubmitted;
+  final bool challengedScoreSubmitted;
+  // Scores soumis par chaque équipe (visibles par l'autre)
+  final int? challengerSubmittedChallengerScore;
+  final int? challengerSubmittedChallengedScore;
+  final int? challengedSubmittedChallengerScore;
+  final int? challengedSubmittedChallengedScore;
+  final bool scoreValidated;
+  final bool scoreConflict;
+  final DateTime createdAt;
+  final DateTime? respondedAt;
+  final DateTime? matchPlayedAt;
+
+  MatchChallenge({
+    required this.id,
+    required this.challengerTeamId,
+    required this.challengerTeamName,
+    this.challengerTeamLogoUrl,
+    required this.challengerOwnerUsername,
+    required this.challengedTeamId,
+    required this.challengedTeamName,
+    this.challengedTeamLogoUrl,
+    required this.challengedOwnerUsername,
+    required this.status,
+    this.proposedDate,
+    this.proposedLocation,
+    this.message,
+    this.responseMessage,
+    this.challengerScore,
+    this.challengedScore,
+    this.challengerScoreSubmitted = false,
+    this.challengedScoreSubmitted = false,
+    this.challengerSubmittedChallengerScore,
+    this.challengerSubmittedChallengedScore,
+    this.challengedSubmittedChallengerScore,
+    this.challengedSubmittedChallengedScore,
+    this.scoreValidated = false,
+    this.scoreConflict = false,
+    required this.createdAt,
+    this.respondedAt,
+    this.matchPlayedAt,
+  });
+
+  /// Vérifie si l'équipe donnée a déjà soumis son score
+  bool hasSubmittedScore(int teamId) {
+    if (teamId == challengerTeamId) {
+      return challengerScoreSubmitted;
+    } else if (teamId == challengedTeamId) {
+      return challengedScoreSubmitted;
+    }
+    return false;
+  }
+
+  /// Retourne le score soumis par l'adversaire (si disponible)
+  /// Retourne une Map avec 'myScore' et 'opponentScore' du point de vue de l'adversaire
+  Map<String, int>? getOpponentSubmittedScore(int myTeamId) {
+    if (myTeamId == challengerTeamId && challengedScoreSubmitted) {
+      // Je suis le challenger, l'adversaire (challenged) a soumis
+      return {
+        'challengerScore': challengedSubmittedChallengerScore ?? 0,
+        'challengedScore': challengedSubmittedChallengedScore ?? 0,
+      };
+    } else if (myTeamId == challengedTeamId && challengerScoreSubmitted) {
+      // Je suis le challenged, l'adversaire (challenger) a soumis
+      return {
+        'challengerScore': challengerSubmittedChallengerScore ?? 0,
+        'challengedScore': challengerSubmittedChallengedScore ?? 0,
+      };
+    }
+    return null;
+  }
+
+  /// Retourne le nom de l'équipe adverse
+  String getOpponentName(int myTeamId) {
+    if (myTeamId == challengerTeamId) {
+      return challengedTeamName;
+    }
+    return challengerTeamName;
+  }
+
+  /// Retourne le logo de l'équipe adverse
+  String? getOpponentLogoUrl(int myTeamId) {
+    if (myTeamId == challengerTeamId) {
+      return challengedTeamLogoUrl;
+    }
+    return challengerTeamLogoUrl;
+  }
+
+  factory MatchChallenge.fromJson(Map<String, dynamic> json) {
+    return MatchChallenge(
+      id: json['id'] as int,
+      challengerTeamId: json['challenger_team_id'] as int,
+      challengerTeamName: json['challenger_team_name'] as String,
+      challengerTeamLogoUrl: json['challenger_team_logo_url'] as String?,
+      challengerOwnerUsername: json['challenger_owner_username'] as String,
+      challengedTeamId: json['challenged_team_id'] as int,
+      challengedTeamName: json['challenged_team_name'] as String,
+      challengedTeamLogoUrl: json['challenged_team_logo_url'] as String?,
+      challengedOwnerUsername: json['challenged_owner_username'] as String,
+      status: ChallengeStatus.fromString(json['status'] as String),
+      proposedDate: json['proposed_date'] != null
+          ? DateTime.parse(json['proposed_date'])
+          : null,
+      proposedLocation: json['proposed_location'] as String?,
+      message: json['message'] as String?,
+      responseMessage: json['response_message'] as String?,
+      challengerScore: json['challenger_score'] as int?,
+      challengedScore: json['challenged_score'] as int?,
+      challengerScoreSubmitted:
+          json['challenger_score_submitted'] as bool? ?? false,
+      challengedScoreSubmitted:
+          json['challenged_score_submitted'] as bool? ?? false,
+      challengerSubmittedChallengerScore:
+          json['challenger_submitted_challenger_score'] as int?,
+      challengerSubmittedChallengedScore:
+          json['challenger_submitted_challenged_score'] as int?,
+      challengedSubmittedChallengerScore:
+          json['challenged_submitted_challenger_score'] as int?,
+      challengedSubmittedChallengedScore:
+          json['challenged_submitted_challenged_score'] as int?,
+      scoreValidated: json['score_validated'] as bool? ?? false,
+      scoreConflict: json['score_conflict'] as bool? ?? false,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      respondedAt: json['responded_at'] != null
+          ? DateTime.parse(json['responded_at'])
+          : null,
+      matchPlayedAt: json['match_played_at'] != null
+          ? DateTime.parse(json['match_played_at'])
+          : null,
+    );
+  }
+}
+
+/// Modèle de message de chat de match
+class MatchChatMessage {
+  final int id;
+  final int challengeId;
+  final int senderTeamId;
+  final String senderTeamName;
+  final int senderUserId;
+  final String senderUsername;
+  final String? senderAvatarUrl;
+  final String content;
+  final DateTime createdAt;
+  final bool isRead;
+
+  MatchChatMessage({
+    required this.id,
+    required this.challengeId,
+    required this.senderTeamId,
+    required this.senderTeamName,
+    required this.senderUserId,
+    required this.senderUsername,
+    this.senderAvatarUrl,
+    required this.content,
+    required this.createdAt,
+    required this.isRead,
+  });
+
+  factory MatchChatMessage.fromJson(Map<String, dynamic> json) {
+    return MatchChatMessage(
+      id: json['id'] as int,
+      challengeId: json['challenge_id'] as int,
+      senderTeamId: json['sender_team_id'] as int,
+      senderTeamName: json['sender_team_name'] as String,
+      senderUserId: json['sender_user_id'] as int,
+      senderUsername: json['sender_username'] as String,
+      senderAvatarUrl: json['sender_avatar_url'] as String?,
+      content: json['content'] as String,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      isRead: json['is_read'] as bool? ?? false,
     );
   }
 }

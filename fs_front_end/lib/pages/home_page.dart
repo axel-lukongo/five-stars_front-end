@@ -4,9 +4,12 @@ import 'package:provider/provider.dart';
 import '../theme_config/colors_config.dart';
 import '../providers/teams_provider.dart';
 import '../providers/friends_provider.dart';
+import '../providers/auth_provider.dart';
 import '../services/teams_service.dart';
 import 'discover_teams_page.dart';
 import 'team_chat_page.dart';
+import 'find_opponents_page.dart';
+import 'match_chat_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -19,6 +22,19 @@ class _HomePageState extends State<HomePage> {
   static const double _playerAvatarRadius = 25;
   static const double _playerAvatarDiameter = _playerAvatarRadius * 2;
 
+  // État pour le mode recherche d'adversaire
+  bool _isLookingForOpponent = false;
+  bool _isLoadingSearchPrefs = false;
+  TeamSearchPreference? _searchPreference;
+  int? _lastLoadedTeamId;
+
+  // État pour les matchs à venir
+  List<MatchChallenge> _upcomingMatches = [];
+  bool _isLoadingMatches = false;
+
+  // État pour les messages non lus des matchs
+  Map<int, int> _unreadMatchMessages = {};
+
   @override
   void initState() {
     super.initState();
@@ -27,13 +43,1190 @@ class _HomePageState extends State<HomePage> {
       provider.loadMyTeam();
       // Démarrer le polling pour les notifications en temps réel
       provider.startChatPolling();
+      // Ajouter un listener pour recharger les préférences quand l'équipe change
+      provider.addListener(_onTeamChanged);
+      // Charger les préférences de recherche
+      _loadSearchPreferences();
     });
+  }
+
+  /// Callback quand l'équipe change
+  void _onTeamChanged() {
+    final provider = context.read<TeamsProvider>();
+    final currentTeam = provider.currentDisplayedTeam;
+
+    // Recharger les préférences si l'équipe a changé
+    if (currentTeam != null && currentTeam.id != _lastLoadedTeamId) {
+      _loadSearchPreferences();
+    }
+  }
+
+  /// Charge les préférences de recherche pour l'équipe actuelle
+  Future<void> _loadSearchPreferences() async {
+    final provider = context.read<TeamsProvider>();
+    final team = provider.currentDisplayedTeam;
+
+    // Si pas d'équipe ou pas membre de cette équipe
+    if (team == null || !provider.isPartOfCurrentTeam) {
+      setState(() {
+        _isLookingForOpponent = false;
+        _searchPreference = null;
+        _lastLoadedTeamId = team?.id;
+        _upcomingMatches = [];
+      });
+      return;
+    }
+
+    _lastLoadedTeamId = team.id;
+    setState(() => _isLoadingSearchPrefs = true);
+
+    try {
+      // Charger les matchs pour tous les membres
+      final matchesFuture = TeamsService.instance.getTeamMatches(
+        team.id,
+        status: 'accepted',
+      );
+
+      // Les préférences de recherche ne sont chargées que pour l'owner
+      if (provider.isCurrentTeamMine) {
+        final results = await Future.wait([
+          TeamsService.instance.getSearchPreferences(team.id),
+          matchesFuture,
+          TeamsService.instance.getAllUnreadCounts(),
+        ]);
+
+        if (mounted) {
+          setState(() {
+            _searchPreference = results[0] as TeamSearchPreference?;
+            _isLookingForOpponent =
+                _searchPreference?.isLookingForOpponent ?? false;
+            _upcomingMatches = results[1] as List<MatchChallenge>;
+            _unreadMatchMessages = results[2] as Map<int, int>;
+            _isLoadingSearchPrefs = false;
+          });
+        }
+      } else {
+        // Membre mais pas owner : charger uniquement les matchs
+        final results = await Future.wait([
+          matchesFuture,
+          TeamsService.instance.getAllUnreadCounts(),
+        ]);
+
+        if (mounted) {
+          setState(() {
+            _searchPreference = null;
+            _isLookingForOpponent = false;
+            _upcomingMatches = results[0] as List<MatchChallenge>;
+            _unreadMatchMessages = results[1] as Map<int, int>;
+            _isLoadingSearchPrefs = false;
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingSearchPrefs = false);
+      }
+    }
+  }
+
+  /// Recharge les matchs à venir
+  Future<void> _loadUpcomingMatches() async {
+    final provider = context.read<TeamsProvider>();
+    final team = provider.currentDisplayedTeam;
+    if (team == null) return;
+
+    setState(() => _isLoadingMatches = true);
+
+    try {
+      final matches = await TeamsService.instance.getTeamMatches(
+        team.id,
+        status: 'accepted',
+      );
+      if (mounted) {
+        setState(() {
+          _upcomingMatches = matches;
+          _isLoadingMatches = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingMatches = false);
+      }
+    }
+  }
+
+  /// Bascule le mode recherche d'adversaire
+  Future<void> _toggleSearchMode(bool value) async {
+    final provider = context.read<TeamsProvider>();
+    final team = provider.currentDisplayedTeam;
+    if (team == null) return;
+
+    setState(() => _isLookingForOpponent = value);
+
+    try {
+      final result = await TeamsService.instance.updateSearchPreferences(
+        team.id,
+        isLookingForOpponent: value,
+        preferredDays: _searchPreference?.preferredDays,
+        preferredTimeSlots: _searchPreference?.preferredTimeSlots,
+        preferredLocations: _searchPreference?.preferredLocations,
+        skillLevel: _searchPreference?.skillLevel,
+        description: _searchPreference?.description,
+      );
+
+      if (result != null && mounted) {
+        setState(() => _searchPreference = result);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              value
+                  ? '🔍 Mode recherche activé ! Les autres équipes peuvent maintenant vous trouver.'
+                  : 'Mode recherche désactivé.',
+            ),
+            backgroundColor: value ? Colors.green : Colors.grey,
+          ),
+        );
+      }
+    } catch (e) {
+      // Revenir à l'état précédent en cas d'erreur
+      if (mounted) {
+        setState(() => _isLookingForOpponent = !value);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur lors de la mise à jour'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Widget pour activer/désactiver le mode recherche d'adversaire
+  Widget _buildSearchModeToggle(bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: _isLookingForOpponent
+            ? myAccentVibrantBlue.withOpacity(0.15)
+            : (isDarkMode ? Colors.grey[800] : Colors.grey[200]),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _isLookingForOpponent
+              ? myAccentVibrantBlue
+              : Colors.transparent,
+          width: 1.5,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            _isLookingForOpponent ? Icons.visibility : Icons.visibility_off,
+            color: _isLookingForOpponent
+                ? myAccentVibrantBlue
+                : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mode recherche d\'adversaire',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: _isLookingForOpponent
+                        ? (isDarkMode ? Colors.white : MyprimaryDark)
+                        : (isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                  ),
+                ),
+                Text(
+                  _isLookingForOpponent
+                      ? 'Votre équipe est visible pour les adversaires'
+                      : 'Activez pour être trouvé par d\'autres équipes',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_isLoadingSearchPrefs)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Switch.adaptive(
+              value: _isLookingForOpponent,
+              onChanged: _toggleSearchMode,
+              activeColor: myAccentVibrantBlue,
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Section des matchs à venir
+  Widget _buildUpcomingMatchesSection(
+    int myTeamId,
+    bool isDarkMode,
+    Color titleColor,
+    bool isOwner,
+  ) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Icon(Icons.sports_soccer, color: myAccentVibrantBlue, size: 20),
+            const SizedBox(width: 8),
+            Text(
+              'Matchs à venir',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: titleColor,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: myAccentVibrantBlue.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                '${_upcomingMatches.length}',
+                style: const TextStyle(
+                  color: myAccentVibrantBlue,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        ..._upcomingMatches.map(
+          (match) => _buildMatchCard(match, myTeamId, isDarkMode, isOwner),
+        ),
+      ],
+    );
+  }
+
+  /// Carte pour afficher un match
+  Widget _buildMatchCard(
+    MatchChallenge match,
+    int myTeamId,
+    bool isDarkMode,
+    bool isOwner,
+  ) {
+    final isChallenger = match.challengerTeamId == myTeamId;
+    final opponentName = match.getOpponentName(myTeamId);
+    final opponentLogo = match.getOpponentLogoUrl(myTeamId);
+    final hasSubmitted = match.hasSubmittedScore(myTeamId);
+    final opponentSubmittedScore = match.getOpponentSubmittedScore(myTeamId);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: myAccentVibrantBlue.withOpacity(0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // En-tête avec adversaire
+          Row(
+            children: [
+              // Logo adversaire
+              CircleAvatar(
+                radius: 24,
+                backgroundColor: myAccentVibrantBlue.withOpacity(0.2),
+                backgroundImage: opponentLogo != null
+                    ? NetworkImage(opponentLogo)
+                    : null,
+                child: opponentLogo == null
+                    ? Text(
+                        opponentName[0].toUpperCase(),
+                        style: const TextStyle(
+                          color: myAccentVibrantBlue,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                        ),
+                      )
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'vs $opponentName',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: isDarkMode ? Colors.white : MyprimaryDark,
+                      ),
+                    ),
+                    Text(
+                      isChallenger ? 'Défi envoyé' : 'Défi reçu',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Bouton chat avec badge de messages non lus
+              _buildMatchChatButton(match, myTeamId, isDarkMode),
+              const SizedBox(width: 8),
+              // Statut
+              _buildMatchStatusBadge(match, hasSubmitted, isDarkMode),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Infos du match
+          if (match.proposedDate != null || match.proposedLocation != null)
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                children: [
+                  if (match.proposedDate != null)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 16,
+                          color: isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          _formatMatchDate(match.proposedDate!),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: isDarkMode ? Colors.white : MyprimaryDark,
+                          ),
+                        ),
+                      ],
+                    ),
+                  if (match.proposedDate != null &&
+                      match.proposedLocation != null)
+                    const SizedBox(height: 8),
+                  if (match.proposedLocation != null)
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.location_on,
+                          size: 16,
+                          color: isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            match.proposedLocation!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: isDarkMode ? Colors.white : MyprimaryDark,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 12),
+
+          // Afficher le score de l'adversaire s'il a soumis et que je n'ai pas soumis
+          if (opponentSubmittedScore != null && !hasSubmitted) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.info_outline,
+                        color: Colors.orange,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'L\'adversaire a soumis le score suivant :',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isDarkMode
+                                ? Colors.orange[200]
+                                : Colors.orange[800],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  // Affichage du score avec noms d'équipes
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[800] : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        // Équipe challenger
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                match.challengerTeamName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDarkMode
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${opponentSubmittedScore['challengerScore']}',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode
+                                        ? Colors.blue[300]
+                                        : Colors.blue[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // Séparateur
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                          child: Text(
+                            '-',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: isDarkMode
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                            ),
+                          ),
+                        ),
+                        // Équipe challengée
+                        Expanded(
+                          child: Column(
+                            children: [
+                              Text(
+                                match.challengedTeamName,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDarkMode
+                                      ? Colors.white
+                                      : Colors.black87,
+                                ),
+                                textAlign: TextAlign.center,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              const SizedBox(height: 6),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.red.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '${opponentSubmittedScore['challengedScore']}',
+                                  style: TextStyle(
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode
+                                        ? Colors.red[300]
+                                        : Colors.red[700],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  // Boutons Valider / Contester - seulement pour l'owner
+                  if (isOwner) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => _contestMatchScore(match),
+                            icon: const Icon(Icons.close, size: 18),
+                            label: const Text('Contester'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              side: const BorderSide(color: Colors.red),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton.icon(
+                            onPressed: () => _validateMatchScore(match),
+                            icon: const Icon(Icons.check, size: 18),
+                            label: const Text('Valider'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '⚠️ Si vous contestez → Match nul (0-0)',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        fontStyle: FontStyle.italic,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ] else ...[
+                    // Message pour les membres non-owner
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: Colors.orange.withOpacity(0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: Colors.orange[700],
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'En attente de la validation du score par le capitaine',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDarkMode
+                                    ? Colors.orange[300]
+                                    : Colors.orange[700],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ]
+          // Si j'ai déjà soumis, attente de validation
+          else if (hasSubmitted) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.hourglass_empty,
+                    color: Colors.orange,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Score soumis ! En attente de validation par l\'adversaire.',
+                      style: TextStyle(color: Colors.green[700], fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ]
+          // Personne n'a soumis - seul l'owner peut soumettre
+          else if (isOwner) ...[
+            ElevatedButton.icon(
+              onPressed: () => _showSubmitScoreDialog(match, myTeamId),
+              icon: const Icon(Icons.scoreboard, size: 18),
+              label: const Text('Enregistrer le résultat'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: myAccentVibrantBlue,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(double.infinity, 44),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ]
+          // Membre mais pas owner - afficher un message
+          else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.grey.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'En attente que le capitaine enregistre le résultat.',
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Badge de statut du match
+  Widget _buildMatchStatusBadge(
+    MatchChallenge match,
+    bool hasSubmitted,
+    bool isDarkMode,
+  ) {
+    Color bgColor;
+    Color textColor;
+    String text;
+    IconData icon;
+
+    if (match.scoreConflict) {
+      bgColor = Colors.red.withOpacity(0.1);
+      textColor = Colors.red;
+      text = 'Conflit';
+      icon = Icons.warning;
+    } else if (hasSubmitted) {
+      bgColor = Colors.orange.withOpacity(0.1);
+      textColor = Colors.orange;
+      text = 'En attente';
+      icon = Icons.hourglass_empty;
+    } else {
+      bgColor = myAccentVibrantBlue.withOpacity(0.1);
+      textColor = myAccentVibrantBlue;
+      text = 'À jouer';
+      icon = Icons.sports_soccer;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: textColor),
+          const SizedBox(width: 4),
+          Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Bouton de chat pour un match avec badge de messages non lus
+  Widget _buildMatchChatButton(
+    MatchChallenge match,
+    int myTeamId,
+    bool isDarkMode,
+  ) {
+    final unreadCount = _unreadMatchMessages[match.id] ?? 0;
+    final isChallenger = match.challengerTeamId == myTeamId;
+    final myTeamName = isChallenger
+        ? match.challengerTeamName
+        : match.challengedTeamName;
+    final opponentName = match.getOpponentName(myTeamId);
+    final opponentLogo = match.getOpponentLogoUrl(myTeamId);
+
+    return GestureDetector(
+      onTap: () async {
+        await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MatchChatPage(
+              challengeId: match.id,
+              myTeamName: myTeamName,
+              opponentTeamName: opponentName,
+              opponentTeamLogoUrl: opponentLogo,
+              myTeamId: myTeamId,
+            ),
+          ),
+        );
+        // Recharger les messages non lus après retour du chat
+        _loadUnreadCounts();
+      },
+      child: Stack(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: myAccentVibrantBlue.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.chat_bubble_outline,
+              color: myAccentVibrantBlue,
+              size: 20,
+            ),
+          ),
+          // Badge de messages non lus
+          if (unreadCount > 0)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
+                ),
+                constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                child: Text(
+                  unreadCount > 9 ? '9+' : '$unreadCount',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// Recharge les compteurs de messages non lus
+  Future<void> _loadUnreadCounts() async {
+    final counts = await TeamsService.instance.getAllUnreadCounts();
+    if (mounted) {
+      setState(() {
+        _unreadMatchMessages = counts;
+      });
+    }
+  }
+
+  /// Formater la date du match
+  String _formatMatchDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    final matchDay = DateTime(date.year, date.month, date.day);
+
+    String dayText;
+    if (matchDay == today) {
+      dayText = "Aujourd'hui";
+    } else if (matchDay == tomorrow) {
+      dayText = 'Demain';
+    } else {
+      final days = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+      final months = [
+        'jan',
+        'fév',
+        'mar',
+        'avr',
+        'mai',
+        'juin',
+        'juil',
+        'août',
+        'sep',
+        'oct',
+        'nov',
+        'déc',
+      ];
+      dayText =
+          '${days[date.weekday - 1]} ${date.day} ${months[date.month - 1]}';
+    }
+
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '$dayText à ${hour}h$minute';
+  }
+
+  /// Dialog pour soumettre le score
+  Future<void> _showSubmitScoreDialog(
+    MatchChallenge match,
+    int myTeamId,
+  ) async {
+    final myScoreController = TextEditingController();
+    final opponentScoreController = TextEditingController();
+    final opponentName = match.getOpponentName(myTeamId);
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Enregistrer le résultat'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Entrez le score du match contre $opponentName',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          'Votre équipe',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: myScoreController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text(
+                      '-',
+                      style: TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Text(
+                          opponentName,
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: opponentScoreController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '0',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.blue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.info_outline,
+                      color: Colors.blue,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'L\'adversaire devra confirmer ce score pour qu\'il soit validé.',
+                        style: TextStyle(color: Colors.blue[700], fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final myScore = int.tryParse(myScoreController.text);
+                final opponentScore = int.tryParse(
+                  opponentScoreController.text,
+                );
+                if (myScore != null && opponentScore != null) {
+                  Navigator.pop(context, true);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: myAccentVibrantBlue,
+              ),
+              child: const Text(
+                'Valider',
+                style: TextStyle(color: Colors.white),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == true) {
+      final myScore = int.parse(myScoreController.text);
+      final opponentScore = int.parse(opponentScoreController.text);
+
+      final updated = await TeamsService.instance.submitMatchScore(
+        match.id,
+        myScore: myScore,
+        opponentScore: opponentScore,
+      );
+
+      if (mounted) {
+        if (updated != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                updated.scoreValidated
+                    ? '✅ Score validé ! Les deux équipes ont confirmé le résultat.'
+                    : '⏳ Score enregistré. En attente de confirmation de l\'adversaire.',
+              ),
+              backgroundColor: updated.scoreValidated
+                  ? Colors.green
+                  : Colors.orange,
+            ),
+          );
+          _loadUpcomingMatches();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Erreur lors de l\'enregistrement du score'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  /// Valider le score soumis par l'adversaire
+  Future<void> _validateMatchScore(MatchChallenge match) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Valider le score'),
+        content: const Text('Confirmez-vous que ce score est correct ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+            child: const Text('Valider', style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final result = await TeamsService.instance.validateMatchScore(
+        match.id,
+        validate: true,
+      );
+
+      if (result != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Score validé !'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadUpcomingMatches();
+      }
+    }
+  }
+
+  /// Contester le score - résulte en match nul
+  Future<void> _contestMatchScore(MatchChallenge match) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Contester le score'),
+        content: const Text(
+          'Si vous contestez ce score, le match sera déclaré nul (0-0).\n\n'
+          'Êtes-vous sûr de vouloir contester ?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text(
+              'Contester',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final result = await TeamsService.instance.validateMatchScore(
+        match.id,
+        validate: false,
+      );
+
+      if (result != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Score contesté - Match nul déclaré (0-0)'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        _loadUpcomingMatches();
+      }
+    }
   }
 
   @override
   void dispose() {
-    // Arrêter le polling quand on quitte la page
-    // Note: Ne pas appeler stopChatPolling ici car le provider peut être réutilisé
+    // Retirer le listener
+    try {
+      context.read<TeamsProvider>().removeListener(_onTeamChanged);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -69,6 +1262,10 @@ class _HomePageState extends State<HomePage> {
                       titleColor: titleColor,
                       isDarkMode: isDarkMode,
                     ),
+                    // Widget pour activer le mode recherche d'adversaire
+                    if (teamsProvider.isCurrentTeamMine &&
+                        teamsProvider.currentDisplayedTeam != null)
+                      _buildSearchModeToggle(isDarkMode),
                     const SizedBox(height: 20),
                     if (allTeams.isEmpty)
                       _buildEmptyTeamPlaceholder(isDarkMode)
@@ -138,6 +1335,15 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                       ),
+                    // Section des matchs à venir (visible pour tous les membres)
+                    if (teamsProvider.isPartOfCurrentTeam &&
+                        _upcomingMatches.isNotEmpty)
+                      _buildUpcomingMatchesSection(
+                        teamsProvider.currentDisplayedTeam!.id,
+                        isDarkMode,
+                        titleColor,
+                        teamsProvider.isCurrentTeamMine,
+                      ),
                     const SizedBox(height: 10),
                     // Bouton pour trouver une équipe
                     OutlinedButton.icon(
@@ -178,9 +1384,10 @@ class _HomePageState extends State<HomePage> {
                     // Bouton pour trouver des adversaires
                     ElevatedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Recherche d'adversaires..."),
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const FindOpponentsPage(),
                           ),
                         );
                       },
@@ -899,6 +2106,9 @@ class _HomePageState extends State<HomePage> {
 
   void _showPlayerOptions(BuildContext context, TeamMember member) {
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final isOwner = member.user.id == currentUserId;
+
     showModalBottomSheet(
       context: context,
       backgroundColor: isDarkMode ? MyprimaryDark : Colors.white,
@@ -928,13 +2138,39 @@ class _HomePageState extends State<HomePage> {
                   : null,
             ),
             const SizedBox(height: 10),
-            Text(
-              member.user.username,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: isDarkMode ? myLightBackground : MyprimaryDark,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  member.user.username,
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDarkMode ? myLightBackground : MyprimaryDark,
+                  ),
+                ),
+                if (isOwner) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: myAccentVibrantBlue.withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Vous',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: myAccentVibrantBlue,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
             Text(
               member.position.displayName,
@@ -951,40 +2187,55 @@ class _HomePageState extends State<HomePage> {
                 _showChangePositionDialog(context, member);
               },
             ),
-            ListTile(
-              leading: const Icon(Icons.remove_circle, color: Colors.red),
-              title: const Text('Retirer de l\'équipe'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (dialogCtx) => AlertDialog(
-                    title: const Text('Retirer ce joueur ?'),
-                    content: Text(
-                      'Voulez-vous retirer ${member.user.username} de l\'équipe ?',
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogCtx, false),
-                        child: const Text('Annuler'),
+            // Le propriétaire ne peut pas se retirer de l'équipe
+            if (!isOwner)
+              ListTile(
+                leading: const Icon(Icons.remove_circle, color: Colors.red),
+                title: const Text('Retirer de l\'équipe'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (dialogCtx) => AlertDialog(
+                      title: const Text('Retirer ce joueur ?'),
+                      content: Text(
+                        'Voulez-vous retirer ${member.user.username} de l\'équipe ?',
                       ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(dialogCtx, true),
-                        child: const Text(
-                          'Retirer',
-                          style: TextStyle(color: Colors.red),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogCtx, false),
+                          child: const Text('Annuler'),
                         ),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true && context.mounted) {
-                  await context.read<TeamsProvider>().removeMemberFromMyTeam(
-                    member.user.id,
+                        TextButton(
+                          onPressed: () => Navigator.pop(dialogCtx, true),
+                          child: const Text(
+                            'Retirer',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
+                      ],
+                    ),
                   );
-                }
-              },
-            ),
+                  if (confirm == true && context.mounted) {
+                    await context.read<TeamsProvider>().removeMemberFromMyTeam(
+                      member.user.id,
+                    );
+                  }
+                },
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: Text(
+                  'En tant que propriétaire, vous ne pouvez pas quitter l\'équipe.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                    fontStyle: FontStyle.italic,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
           ],
         ),
       ),
@@ -1000,9 +2251,14 @@ class _HomePageState extends State<HomePage> {
     if (!context.mounted) return;
     final friends = context.read<FriendsProvider>().friends;
     final teamsProvider = context.read<TeamsProvider>();
+    final currentUser = context.read<AuthProvider>().currentUser;
     final availableFriends = friends
         .where((f) => !teamsProvider.isUserInTeam(f.user.id))
         .toList();
+
+    // Vérifier si le propriétaire peut s'ajouter lui-même
+    final canAddSelf =
+        currentUser != null && !teamsProvider.isUserInTeam(currentUser.id);
 
     final isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -1031,6 +2287,55 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
             ),
+            // Option pour s'ajouter soi-même
+            if (canAddSelf)
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: myAccentVibrantBlue.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: myAccentVibrantBlue.withOpacity(0.3),
+                  ),
+                ),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: myAccentVibrantBlue,
+                    backgroundImage: currentUser.avatarUrl != null
+                        ? NetworkImage(currentUser.avatarUrl!)
+                        : null,
+                    child: currentUser.avatarUrl == null
+                        ? Text(
+                            currentUser.username[0].toUpperCase(),
+                            style: const TextStyle(color: Colors.white),
+                          )
+                        : null,
+                  ),
+                  title: Text(
+                    'Me placer ici',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode ? myLightBackground : MyprimaryDark,
+                    ),
+                  ),
+                  subtitle: Text(
+                    '@${currentUser.username}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: const Icon(
+                    Icons.person_add,
+                    color: myAccentVibrantBlue,
+                  ),
+                  onTap: () async {
+                    Navigator.pop(ctx);
+                    await teamsProvider.addMemberToMyTeam(
+                      userId: currentUser.id,
+                      position: position,
+                      slotIndex: slotIndex,
+                    );
+                  },
+                ),
+              ),
             // Option pour mettre en mode recherche
             Container(
               margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

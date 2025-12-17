@@ -38,8 +38,45 @@ class _EditProfilePageState extends State<EditProfilePage> {
     final user = Provider.of<AuthProvider>(context, listen: false).currentUser;
     if (user != null) {
       _phoneController.text = user.phone ?? '';
-      _selectedPosition = user.preferredPosition;
+      // Vérifier si la position existe dans la liste, sinon null
+      final userPosition = user.preferredPosition;
+      if (userPosition != null && _positions.contains(userPosition)) {
+        _selectedPosition = userPosition;
+      } else {
+        // Essayer de mapper les valeurs anglaises vers le français
+        _selectedPosition = _mapPositionToFrench(userPosition);
+      }
     }
+  }
+
+  /// Convertit une position anglaise en français
+  String? _mapPositionToFrench(String? position) {
+    if (position == null) return null;
+    final lowerPos = position.toLowerCase();
+
+    if (lowerPos.contains('goalkeeper') || lowerPos.contains('gardien')) {
+      return 'Gardien';
+    } else if (lowerPos.contains('defender') ||
+        lowerPos.contains('défenseur')) {
+      return 'Défenseur';
+    } else if (lowerPos.contains('midfielder') || lowerPos.contains('milieu')) {
+      return lowerPos.contains('defensive')
+          ? 'Milieu défensif'
+          : 'Milieu offensif';
+    } else if (lowerPos.contains('forward') || lowerPos.contains('attaquant')) {
+      return 'Attaquant';
+    } else if (lowerPos.contains('winger') || lowerPos.contains('ailier')) {
+      return 'Ailier droit';
+    }
+
+    // Si la valeur est dans notre liste, la retourner
+    for (final pos in _positions) {
+      if (pos.toLowerCase() == lowerPos) {
+        return pos;
+      }
+    }
+
+    return null; // Valeur non reconnue
   }
 
   @override

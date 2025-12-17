@@ -118,6 +118,14 @@ class TeamsProvider with ChangeNotifier {
     return current != null && current.id == _myTeam!.id;
   }
 
+  /// Indique si je fais partie de l'équipe affichée (owner OU membre)
+  bool get isPartOfCurrentTeam {
+    final current = currentDisplayedTeam;
+    if (current == null) return false;
+    // Soit c'est mon équipe (owner), soit je suis membre
+    return allTeams.any((t) => t.id == current.id);
+  }
+
   /// Change l'index du terrain affiché
   void setCurrentTeamIndex(int index) {
     if (index >= 0 && index < allTeams.length) {
