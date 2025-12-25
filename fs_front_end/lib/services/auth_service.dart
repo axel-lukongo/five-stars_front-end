@@ -16,7 +16,7 @@ class AuthService {
   );
 
   // Utilise la configuration centralisée de l'API
-  final String baseUrl = ApiConfig.baseUrl;
+  final String baseUrl = ApiConfig.authUrl;
 
   static const String _keyAccess = 'access_token';
   static const String _keyRefresh = 'refresh_token';

@@ -18,7 +18,7 @@ class MessagesService {
   static final MessagesService instance = MessagesService._privateConstructor();
 
   // Le service messages tourne sur le port 8002
-  String get baseUrl => '${ApiConfig.baseUrl.replaceAll(':8000', ':8002')}';
+  String get baseUrl => ApiConfig.messagesUrl;
 
   // URL WebSocket
   String get wsUrl {

@@ -16,8 +16,7 @@ class TeamsService {
   static final TeamsService instance = TeamsService._privateConstructor();
 
   // Le service teams tourne sur le port 8003
-  String get baseUrl => '${ApiConfig.baseUrl.replaceAll(':8000', ':8003')}';
-
+  String get baseUrl => ApiConfig.teamsUrl;
   // URL WebSocket
   String get wsUrl {
     final httpUrl = baseUrl;

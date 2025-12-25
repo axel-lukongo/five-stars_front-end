@@ -1,21 +1,21 @@
-# Utilise une image de base avec Flutter préinstallé
-FROM cirrusci/flutter:stable
+# Étape 1 : build Flutter web
+FROM --platform=linux/arm64 ghcr.io/cirruslabs/flutter:stable AS build
 
-# Définit le répertoire de travail
+
 WORKDIR /app
+COPY fs_front_end/ .
 
-# Copie le fichier pubspec pour installer les dépendances au préalable
-COPY pubspec.* ./
-
-# Installe les dépendances sans exécuter l'application
 RUN flutter pub get
+RUN flutter build web --release
+RUN chmod -R a+r /app/build/web
 
-# Copie le reste des fichiers du projet dans le conteneur
-COPY ./src /src
-
-WORKDIR /src
-# Expose le port 3000 pour l'application Flutter web (modifiez selon votre configuration)
-EXPOSE 3000
-
-# Commande pour lancer l'application Flutter en mode développement pour recharger automatiquement le code
-# CMD ["flutter", "run", "-d", "web-server", "--web-port", "3000", "--web-renderer", "html"]
+# Étape 2 : serveur web nginx
+FROM nginx:alpine
+COPY --from=build /app/build/web /usr/share/nginx/html
+# Ajout de la configuration nginx personnalisée
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+# Copie le script d'entrée
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+CMD ["/entrypoint.sh"]

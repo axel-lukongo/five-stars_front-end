@@ -9,7 +9,7 @@ class FriendsService {
   static final FriendsService instance = FriendsService._privateConstructor();
 
   // Le service friends tourne sur un port différent
-  String get baseUrl => '${ApiConfig.baseUrl.replaceAll(':8000', ':8001')}';
+  String get baseUrl => ApiConfig.friendsUrl;
 
   /// Récupère la liste complète des amis et demandes
   Future<FriendsListResponse?> getFriendsList() async {
