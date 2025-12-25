@@ -53,7 +53,7 @@ class AuthService {
     required String username,
     required String password,
   }) async {
-    final url = Uri.parse('$baseUrl/auth/login');
+    final url = Uri.parse('$baseUrl/login');
     final resp = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -90,7 +90,7 @@ class AuthService {
     String? preferredPosition,
     String? avatarUrl,
   }) async {
-    final url = Uri.parse('$baseUrl/auth/register');
+    final url = Uri.parse('$baseUrl/register');
     final body = {'username': username, 'email': email, 'password': password};
 
     // Ajouter les champs optionnels s'ils sont présents
@@ -125,7 +125,7 @@ class AuthService {
     final refresh = await getRefreshToken();
     if (refresh == null) return false;
 
-    final url = Uri.parse('$baseUrl/auth/refresh');
+    final url = Uri.parse('$baseUrl/refresh');
     final resp = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -151,7 +151,7 @@ class AuthService {
     final refresh = await getRefreshToken();
     if (refresh != null) {
       try {
-        final url = Uri.parse('$baseUrl/auth/revoke');
+        final url = Uri.parse('$baseUrl/revoke');
         await http.post(
           url,
           headers: {'Content-Type': 'application/json'},
@@ -169,7 +169,7 @@ class AuthService {
     final authHeader = await getAuthHeader();
     if (authHeader == null) return null;
 
-    final url = Uri.parse('$baseUrl/auth/me');
+    final url = Uri.parse('$baseUrl/me');
     final resp = await http.get(
       url,
       headers: {
@@ -205,7 +205,7 @@ class AuthService {
       body['preferred_position'] = preferredPosition;
     if (avatarUrl != null) body['avatar_url'] = avatarUrl;
 
-    final url = Uri.parse('$baseUrl/auth/me');
+    final url = Uri.parse('$baseUrl/me');
     final resp = await http.patch(
       url,
       headers: {
@@ -245,7 +245,7 @@ class AuthService {
     final authHeader = await getAuthHeader();
     if (authHeader == null) return null;
 
-    final url = Uri.parse('$baseUrl/auth/users/$userId');
+    final url = Uri.parse('$baseUrl/users/$userId');
     final resp = await http.get(
       url,
       headers: {

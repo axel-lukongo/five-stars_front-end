@@ -10,6 +10,6 @@ services:
       - "8080:80"
     environment:
       AUTH_URL: "http://localhost:8000/auth"
-      FRIENDS_URL: "http://localhost:8001"
-      MESSAGES_URL: "http://localhost:8002"
+      FRIENDS_URL: "http://localhost:8001/friends"
+      MESSAGES_URL: "http://localhost:8002/messages"
       TEAMS_URL: "http://localhost:8003"

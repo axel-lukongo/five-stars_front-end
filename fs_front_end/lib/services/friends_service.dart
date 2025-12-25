@@ -16,7 +16,7 @@ class FriendsService {
     final authHeader = await AuthService.instance.getAuthHeader();
     if (authHeader == null) return null;
 
-    final url = Uri.parse('$baseUrl/friends');
+    final url = Uri.parse('$baseUrl');
     final resp = await http.get(
       url,
       headers: {
@@ -39,7 +39,7 @@ class FriendsService {
       return {'ok': false, 'message': 'Non authentifié'};
     }
 
-    final url = Uri.parse('$baseUrl/friends/request');
+    final url = Uri.parse('$baseUrl/request');
     final resp = await http.post(
       url,
       headers: {
@@ -71,7 +71,7 @@ class FriendsService {
       return {'ok': false, 'message': 'Non authentifié'};
     }
 
-    final url = Uri.parse('$baseUrl/friends/$friendshipId/respond');
+    final url = Uri.parse('$baseUrl/$friendshipId/respond');
     final resp = await http.post(
       url,
       headers: {
@@ -100,7 +100,7 @@ class FriendsService {
       return {'ok': false, 'message': 'Non authentifié'};
     }
 
-    final url = Uri.parse('$baseUrl/friends/$friendshipId');
+    final url = Uri.parse('$baseUrl/$friendshipId');
     final resp = await http.delete(
       url,
       headers: {
@@ -126,7 +126,7 @@ class FriendsService {
     final authHeader = await AuthService.instance.getAuthHeader();
     if (authHeader == null) return [];
 
-    final url = Uri.parse('$baseUrl/friends/search?q=$query');
+    final url = Uri.parse('$baseUrl/search?q=$query');
     final resp = await http.get(
       url,
       headers: {
