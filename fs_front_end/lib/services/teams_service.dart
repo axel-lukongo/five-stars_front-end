@@ -77,7 +77,7 @@ class TeamsService {
   Future<TeamDetail?> getTeam(int teamId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/teams/$teamId'),
+        Uri.parse('$baseUrl/$teamId'),
         headers: await _headers,
       );
 
@@ -129,7 +129,7 @@ class TeamsService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/teams/$teamId'),
+        Uri.parse('$baseUrl/$teamId'),
         headers: await _headers,
         body: jsonEncode({
           if (name != null) 'name': name,
@@ -152,7 +152,7 @@ class TeamsService {
   Future<bool> deleteTeam(int teamId) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/teams/$teamId'),
+        Uri.parse('$baseUrl/$teamId'),
         headers: await _headers,
       );
 
@@ -176,7 +176,7 @@ class TeamsService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/teams/$teamId/members'),
+        Uri.parse('$baseUrl/$teamId/members'),
         headers: await _headers,
         body: jsonEncode({
           'user_id': userId,
@@ -208,7 +208,7 @@ class TeamsService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/teams/$teamId/members/$memberUserId/position'),
+        Uri.parse('$baseUrl/$teamId/members/$memberUserId/position'),
         headers: await _headers,
         body: jsonEncode({'position': position.value, 'slot_index': slotIndex}),
       );
@@ -227,7 +227,7 @@ class TeamsService {
   Future<bool> removeMember(int teamId, int memberUserId) async {
     try {
       final response = await http.delete(
-        Uri.parse('$baseUrl/teams/$teamId/members/$memberUserId'),
+        Uri.parse('$baseUrl/$teamId/members/$memberUserId'),
         headers: await _headers,
       );
 
@@ -317,7 +317,7 @@ class TeamsService {
   }) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/teams/$teamId/slots/open'),
+        Uri.parse('$baseUrl/$teamId/slots/open'),
         headers: await _headers,
         body: jsonEncode({
           'position': position.value,
@@ -340,7 +340,7 @@ class TeamsService {
   Future<List<OpenSlot>> getTeamOpenSlots(int teamId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/teams/$teamId/open-slots'),
+        Uri.parse('$baseUrl/$teamId/open-slots'),
         headers: await _headers,
       );
 
@@ -437,7 +437,7 @@ class TeamsService {
   Future<List<SlotApplication>> getTeamApplications(int teamId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/teams/$teamId/applications'),
+        Uri.parse('$baseUrl/$teamId/applications'),
         headers: await _headers,
       );
 
@@ -485,7 +485,7 @@ class TeamsService {
     int? beforeId,
   }) async {
     try {
-      var url = '$baseUrl/teams/$teamId/messages?limit=$limit';
+      var url = '$baseUrl/$teamId/messages?limit=$limit';
       if (beforeId != null) {
         url += '&before_id=$beforeId';
       }
@@ -507,7 +507,7 @@ class TeamsService {
   Future<TeamChatMessage?> sendTeamMessage(int teamId, String content) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/teams/$teamId/messages'),
+        Uri.parse('$baseUrl/$teamId/messages'),
         headers: await _headers,
         body: jsonEncode({'content': content}),
       );
@@ -525,9 +525,13 @@ class TeamsService {
   /// Récupère la liste des chats d'équipe
   Future<List<TeamChatInfo>> getMyTeamChats() async {
     try {
+      final headers = await _headers;
+      debugPrint(
+        'Token utilisé pour my-team-chats: \\u001b[33m${headers['Authorization']}\\u001b[0m',
+      );
       final response = await http.get(
         Uri.parse('$baseUrl/my-team-chats'),
-        headers: await _headers,
+        headers: headers,
       );
 
       if (response.statusCode == 200) {
@@ -545,7 +549,7 @@ class TeamsService {
   Future<bool> markMessagesAsRead(int teamId) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/teams/$teamId/messages/read'),
+        Uri.parse('$baseUrl/$teamId/messages/read'),
         headers: await _headers,
       );
 
@@ -692,7 +696,7 @@ class TeamsService {
   }) async {
     try {
       final response = await http.put(
-        Uri.parse('$baseUrl/teams/$teamId/search-preferences'),
+        Uri.parse('$baseUrl/$teamId/search-preferences'),
         headers: await _headers,
         body: jsonEncode({
           'is_looking_for_opponent': isLookingForOpponent,
@@ -718,7 +722,7 @@ class TeamsService {
   Future<TeamSearchPreference?> getSearchPreferences(int teamId) async {
     try {
       final response = await http.get(
-        Uri.parse('$baseUrl/teams/$teamId/search-preferences'),
+        Uri.parse('$baseUrl/$teamId/search-preferences'),
         headers: await _headers,
       );
 
@@ -908,7 +912,7 @@ class TeamsService {
     String? status,
   }) async {
     try {
-      var url = '$baseUrl/teams/$teamId/matches';
+      var url = '$baseUrl/$teamId/matches';
       if (status != null) {
         url += '?status=$status';
       }
