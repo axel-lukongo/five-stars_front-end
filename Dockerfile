@@ -6,6 +6,7 @@ WORKDIR /app
 COPY fs_front_end/ .
 
 RUN flutter pub get
+# RUN flutter build web --release --pwa-strategy=none  # <-- MODIFIÉ ICI
 RUN flutter build web --release
 RUN chmod -R a+r /app/build/web
 

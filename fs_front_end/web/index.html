@@ -36,6 +36,20 @@
   <script src="assets/env.js"></script>
 </head>
 <body>
+    <!-- <script>
+    // Désactiver les service workers
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(registrations) {
+        for(let registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    
+    window.flutterConfiguration = {
+      serviceWorkerVersion: null,
+    };
+  </script> -->
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

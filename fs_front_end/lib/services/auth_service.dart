@@ -1,19 +1,13 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'api_config.dart';
 
 class AuthService {
   AuthService._privateConstructor();
   static final AuthService instance = AuthService._privateConstructor();
-
-  // Configuration pour macOS et iOS
-  final FlutterSecureStorage _storage = const FlutterSecureStorage(
-    mOptions: MacOsOptions(accessibility: KeychainAccessibility.first_unlock),
-    iOptions: IOSOptions(accessibility: KeychainAccessibility.first_unlock),
-  );
 
   // Utilise la configuration centralisée de l'API
   final String baseUrl = ApiConfig.authUrl;
@@ -22,21 +16,25 @@ class AuthService {
   static const String _keyRefresh = 'refresh_token';
 
   Future<void> _storeTokens(String accessToken, String refreshToken) async {
-    await _storage.write(key: _keyAccess, value: accessToken);
-    await _storage.write(key: _keyRefresh, value: refreshToken);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_keyAccess, accessToken);
+    await prefs.setString(_keyRefresh, refreshToken);
   }
 
   Future<void> _clearTokens() async {
-    await _storage.delete(key: _keyAccess);
-    await _storage.delete(key: _keyRefresh);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyAccess);
+    await prefs.remove(_keyRefresh);
   }
 
   Future<String?> getAccessToken() async {
-    return await _storage.read(key: _keyAccess);
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyAccess);
   }
 
   Future<String?> getRefreshToken() async {
-    return await _storage.read(key: _keyRefresh);
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_keyRefresh);
   }
 
   Future<bool> isAccessTokenValid() async {
@@ -99,8 +97,9 @@ class AuthService {
     if (preferredPosition != null && preferredPosition.isNotEmpty) {
       body['preferred_position'] = preferredPosition;
     }
-    if (avatarUrl != null && avatarUrl.isNotEmpty)
+    if (avatarUrl != null && avatarUrl.isNotEmpty) {
       body['avatar_url'] = avatarUrl;
+    }
 
     final resp = await http.post(
       url,
@@ -201,8 +200,9 @@ class AuthService {
     if (email != null) body['email'] = email;
     if (phone != null) body['phone'] = phone;
     if (bio != null) body['bio'] = bio;
-    if (preferredPosition != null)
+    if (preferredPosition != null) {
       body['preferred_position'] = preferredPosition;
+    }
     if (avatarUrl != null) body['avatar_url'] = avatarUrl;
 
     final url = Uri.parse('$baseUrl/me');
