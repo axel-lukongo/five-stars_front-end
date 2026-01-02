@@ -20,6 +20,95 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  /// Boutons d'action premium avec effet glass
+  Widget _buildPremiumActionButtons(bool isDarkMode) {
+    return Column(
+      children: <Widget>[
+        _buildGlassActionButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<DiscoverTeamsPage>(
+              builder: (_) => const DiscoverTeamsPage(),
+            ),
+          ),
+          icon: Icons.person_search,
+          label: 'Trouver une équipe',
+          gradient: LinearGradient(
+            colors: <Color>[
+              Colors.orange.withOpacity(0.8),
+              Colors.orange.withOpacity(0.6),
+            ],
+          ),
+          isDarkMode: isDarkMode,
+        ),
+        const SizedBox(height: 16),
+        _buildGlassActionButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<FindOpponentsPage>(
+              builder: (_) => const FindOpponentsPage(),
+            ),
+          ),
+          icon: Icons.sports_soccer,
+          label: 'Trouver des adversaires',
+          gradient: LinearGradient(
+            colors: <Color>[
+              myAccentVibrantBlue.withOpacity(0.8),
+              myAccentVibrantBlue.withOpacity(0.6),
+            ],
+          ),
+          isDarkMode: isDarkMode,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGlassActionButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required Gradient gradient,
+    required bool isDarkMode,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: Colors.white, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   static const double _playerAvatarRadius = 28;
   static const double _playerAvatarDiameter = _playerAvatarRadius * 2;
 
@@ -1368,102 +1457,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                         teamsProvider.isCurrentTeamMine,
                       ),
                     const SizedBox(height: 10),
-                    // Bouton pour trouver une équipe
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.orange.withOpacity(0.15),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: OutlinedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const DiscoverTeamsPage(),
-                            ),
-                          );
-                        },
-                        icon: Icon(
-                          Icons.person_search,
-                          color: isDarkMode
-                              ? Colors.orange
-                              : Colors.orange[700],
-                          size: 20,
-                        ),
-                        label: Text(
-                          'Trouver une équipe',
-                          style: TextStyle(
-                            color: isDarkMode
-                                ? Colors.orange
-                                : Colors.orange[700],
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(double.infinity, 52),
-                          side: BorderSide(
-                            color: isDarkMode
-                                ? Colors.orange.withOpacity(0.4)
-                                : Colors.orange.withOpacity(0.3),
-                            width: 1.5,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          backgroundColor: isDarkMode
-                              ? Colors.orange.withOpacity(0.05)
-                              : Colors.orange.withOpacity(0.03),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // Bouton pour trouver des adversaires
-                    Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: myAccentVibrantBlue.withOpacity(0.25),
-                            blurRadius: 16,
-                            offset: const Offset(0, 6),
-                          ),
-                        ],
-                      ),
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const FindOpponentsPage(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.sports_soccer, size: 20),
-                        label: const Text(
-                          'Trouver des adversaires',
-                          style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: myAccentVibrantBlue,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size(double.infinity, 52),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 0,
-                        ),
-                      ),
-                    ),
+                    // Boutons premium glass
+                    _buildPremiumActionButtons(isDarkMode),
                     const SizedBox(height: 90),
                   ],
                 ),
@@ -1481,6 +1476,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     required TeamDetail team,
     required int unreadCount,
     required bool isDarkMode,
+    double iconSize = 20,
   }) {
     return Stack(
       clipBehavior: Clip.none,
@@ -1488,7 +1484,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         IconButton(
           icon: Icon(
             Icons.chat_bubble_outline,
-            size: 18,
+            size: iconSize,
             color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
           ),
           onPressed: () async {
@@ -1582,26 +1578,45 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Column(
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Stack(
                 children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_left,
-                      color: teamsProvider.canGoPrevious
-                          ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
-                          : Colors.grey.withOpacity(0.3),
-                      size: 28,
+                  if (currentTeam != null)
+                    Positioned(
+                      top: 0,
+                      right: 12,
+                      child: _buildChatButton(
+                        context: context,
+                        team: currentTeam,
+                        unreadCount: teamsProvider.getUnreadCountForTeam(
+                          currentTeam.id,
+                        ),
+                        isDarkMode: isDarkMode,
+                        iconSize: 28,
+                      ),
                     ),
-                    onPressed: teamsProvider.canGoPrevious
-                        ? () => teamsProvider.goToPreviousTeam()
-                        : null,
-                  ),
-                  Expanded(
-                    child: Column(
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(top: 74),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.chevron_left,
+                            color: teamsProvider.canGoPrevious
+                                ? (isDarkMode
+                                      ? myAccentVibrantBlue
+                                      : MyprimaryDark)
+                                : Colors.grey.withOpacity(0.3),
+                            size: 32,
+                          ),
+                          onPressed: teamsProvider.canGoPrevious
+                              ? () => teamsProvider.goToPreviousTeam()
+                              : null,
+                        ),
+                      ),
+                      Expanded(
+                        child: Column(
                           children: [
                             Container(
                               padding: const EdgeInsets.symmetric(
@@ -1634,70 +1649,74 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                                 ),
                               ),
                             ),
-                            if (isMyTeam)
-                              IconButton(
-                                icon: Icon(
-                                  Icons.edit,
-                                  size: 16,
-                                  color: isDarkMode
-                                      ? myAccentVibrantBlue
-                                      : MyprimaryDark,
+                            const SizedBox(height: 12),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    currentTeam?.name ?? 'Mon Équipe',
+                                    style: TextStyle(
+                                      fontSize: 32,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -1.5,
+                                      color: titleColor,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
                                 ),
-                                onPressed: () =>
-                                    _showEditTeamNameDialog(context),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                              ),
-                            if (currentTeam != null)
-                              _buildChatButton(
-                                context: context,
-                                team: currentTeam,
-                                unreadCount: teamsProvider
-                                    .getUnreadCountForTeam(currentTeam.id),
-                                isDarkMode: isDarkMode,
+                                if (isMyTeam)
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.edit,
+                                      size: 24,
+                                      color: isDarkMode
+                                          ? myAccentVibrantBlue
+                                          : MyprimaryDark,
+                                    ),
+                                    onPressed: () =>
+                                        _showEditTeamNameDialog(context),
+                                    padding: const EdgeInsets.only(left: 4),
+                                    constraints: const BoxConstraints(),
+                                  ),
+                              ],
+                            ),
+                            if (allTeams.length > 1)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 8),
+                                child: Text(
+                                  '${teamsProvider.currentTeamIndex + 1} / ${allTeams.length}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: isDarkMode
+                                        ? Colors.grey[400]
+                                        : Colors.grey[600],
+                                  ),
+                                ),
                               ),
                           ],
                         ),
-                        const SizedBox(height: 12),
-                        Text(
-                          currentTeam?.name ?? 'Mon Équipe',
-                          style: TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: -1.5,
-                            color: titleColor,
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 74),
+                        child: IconButton(
+                          icon: Icon(
+                            Icons.chevron_right,
+                            color: teamsProvider.canGoNext
+                                ? (isDarkMode
+                                      ? myAccentVibrantBlue
+                                      : MyprimaryDark)
+                                : Colors.grey.withOpacity(0.3),
+                            size: 32,
                           ),
-                          textAlign: TextAlign.center,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                          onPressed: teamsProvider.canGoNext
+                              ? () => teamsProvider.goToNextTeam()
+                              : null,
                         ),
-                        if (allTeams.length > 1)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 8),
-                            child: Text(
-                              '${teamsProvider.currentTeamIndex + 1} / ${allTeams.length}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isDarkMode
-                                    ? Colors.grey[400]
-                                    : Colors.grey[600],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    icon: Icon(
-                      Icons.chevron_right,
-                      color: teamsProvider.canGoNext
-                          ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
-                          : Colors.grey.withOpacity(0.3),
-                      size: 28,
-                    ),
-                    onPressed: teamsProvider.canGoNext
-                        ? () => teamsProvider.goToNextTeam()
-                        : null,
+                      ),
+                    ],
                   ),
                 ],
               ),
