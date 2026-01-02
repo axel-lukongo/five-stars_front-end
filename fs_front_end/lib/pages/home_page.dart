@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 
 import 'package:provider/provider.dart';
 import '../theme_config/colors_config.dart';
@@ -18,55 +19,49 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  static const double _playerAvatarRadius = 25;
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  static const double _playerAvatarRadius = 28;
   static const double _playerAvatarDiameter = _playerAvatarRadius * 2;
 
-  // État pour le mode recherche d'adversaire
   bool _isLookingForOpponent = false;
   bool _isLoadingSearchPrefs = false;
   TeamSearchPreference? _searchPreference;
   int? _lastLoadedTeamId;
-
-  // État pour les matchs à venir
   List<MatchChallenge> _upcomingMatches = [];
   bool _isLoadingMatches = false;
-
-  // État pour les messages non lus des matchs
   Map<int, int> _unreadMatchMessages = {};
+
+  late AnimationController _fadeController;
 
   @override
   void initState() {
     super.initState();
+    _fadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    )..forward();
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<TeamsProvider>();
       provider.loadMyTeam();
-      // Démarrer le polling pour les notifications en temps réel
       provider.startChatPolling();
-      // Ajouter un listener pour recharger les préférences quand l'équipe change
       provider.addListener(_onTeamChanged);
-      // Charger les préférences de recherche
       _loadSearchPreferences();
     });
   }
 
-  /// Callback quand l'équipe change
   void _onTeamChanged() {
     final provider = context.read<TeamsProvider>();
     final currentTeam = provider.currentDisplayedTeam;
-
-    // Recharger les préférences si l'équipe a changé
     if (currentTeam != null && currentTeam.id != _lastLoadedTeamId) {
       _loadSearchPreferences();
     }
   }
 
-  /// Charge les préférences de recherche pour l'équipe actuelle
   Future<void> _loadSearchPreferences() async {
     final provider = context.read<TeamsProvider>();
     final team = provider.currentDisplayedTeam;
 
-    // Si pas d'équipe ou pas membre de cette équipe
     if (team == null || !provider.isPartOfCurrentTeam) {
       setState(() {
         _isLookingForOpponent = false;
@@ -81,13 +76,11 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoadingSearchPrefs = true);
 
     try {
-      // Charger les matchs pour tous les membres
       final matchesFuture = TeamsService.instance.getTeamMatches(
         team.id,
         status: 'accepted',
       );
 
-      // Les préférences de recherche ne sont chargées que pour l'owner
       if (provider.isCurrentTeamMine) {
         final results = await Future.wait([
           TeamsService.instance.getSearchPreferences(team.id),
@@ -106,7 +99,6 @@ class _HomePageState extends State<HomePage> {
           });
         }
       } else {
-        // Membre mais pas owner : charger uniquement les matchs
         final results = await Future.wait([
           matchesFuture,
           TeamsService.instance.getAllUnreadCounts(),
@@ -123,20 +115,15 @@ class _HomePageState extends State<HomePage> {
         }
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingSearchPrefs = false);
-      }
+      if (mounted) setState(() => _isLoadingSearchPrefs = false);
     }
   }
 
-  /// Recharge les matchs à venir
   Future<void> _loadUpcomingMatches() async {
     final provider = context.read<TeamsProvider>();
     final team = provider.currentDisplayedTeam;
     if (team == null) return;
-
     setState(() => _isLoadingMatches = true);
-
     try {
       final matches = await TeamsService.instance.getTeamMatches(
         team.id,
@@ -149,20 +136,15 @@ class _HomePageState extends State<HomePage> {
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() => _isLoadingMatches = false);
-      }
+      if (mounted) setState(() => _isLoadingMatches = false);
     }
   }
 
-  /// Bascule le mode recherche d'adversaire
   Future<void> _toggleSearchMode(bool value) async {
     final provider = context.read<TeamsProvider>();
     final team = provider.currentDisplayedTeam;
     if (team == null) return;
-
     setState(() => _isLookingForOpponent = value);
-
     try {
       final result = await TeamsService.instance.updateSearchPreferences(
         team.id,
@@ -173,100 +155,141 @@ class _HomePageState extends State<HomePage> {
         skillLevel: _searchPreference?.skillLevel,
         description: _searchPreference?.description,
       );
-
       if (result != null && mounted) {
         setState(() => _searchPreference = result);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              value
-                  ? '🔍 Mode recherche activé ! Les autres équipes peuvent maintenant vous trouver.'
-                  : 'Mode recherche désactivé.',
-            ),
-            backgroundColor: value ? Colors.green : Colors.grey,
-          ),
+        _showSnackBar(
+          value ? '🔍 Mode recherche activé' : 'Mode recherche désactivé',
+          isSuccess: value,
         );
       }
     } catch (e) {
-      // Revenir à l'état précédent en cas d'erreur
       if (mounted) {
         setState(() => _isLookingForOpponent = !value);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erreur lors de la mise à jour'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showSnackBar('Erreur', isSuccess: false);
       }
     }
+  }
+
+  void _showSnackBar(String message, {required bool isSuccess}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   /// Widget pour activer/désactiver le mode recherche d'adversaire
   Widget _buildSearchModeToggle(bool isDarkMode) {
     return Container(
-      margin: const EdgeInsets.only(top: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      margin: const EdgeInsets.only(top: 16, bottom: 8),
       decoration: BoxDecoration(
+        gradient: _isLookingForOpponent
+            ? LinearGradient(
+                colors: [
+                  myAccentVibrantBlue.withOpacity(0.15),
+                  myAccentVibrantBlue.withOpacity(0.05),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              )
+            : null,
         color: _isLookingForOpponent
-            ? myAccentVibrantBlue.withOpacity(0.15)
-            : (isDarkMode ? Colors.grey[800] : Colors.grey[200]),
-        borderRadius: BorderRadius.circular(12),
+            ? null
+            : (isDarkMode ? Colors.grey[850] : Colors.grey[50]),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: _isLookingForOpponent
-              ? myAccentVibrantBlue
+              ? myAccentVibrantBlue.withOpacity(0.5)
               : Colors.transparent,
-          width: 1.5,
+          width: 2,
         ),
+        boxShadow: [
+          if (_isLookingForOpponent)
+            BoxShadow(
+              color: myAccentVibrantBlue.withOpacity(0.2),
+              blurRadius: 20,
+              offset: const Offset(0, 8),
+            ),
+        ],
       ),
-      child: Row(
-        children: [
-          Icon(
-            _isLookingForOpponent ? Icons.visibility : Icons.visibility_off,
-            color: _isLookingForOpponent
-                ? myAccentVibrantBlue
-                : (isDarkMode ? Colors.grey[400] : Colors.grey[600]),
-            size: 20,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
               children: [
-                Text(
-                  'Mode recherche d\'adversaire',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 14,
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
                     color: _isLookingForOpponent
-                        ? (isDarkMode ? Colors.white : MyprimaryDark)
-                        : (isDarkMode ? Colors.grey[400] : Colors.grey[700]),
+                        ? myAccentVibrantBlue.withOpacity(0.2)
+                        : (isDarkMode ? Colors.grey[800] : Colors.grey[200]),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(
+                    _isLookingForOpponent
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    color: _isLookingForOpponent
+                        ? myAccentVibrantBlue
+                        : Colors.grey,
+                    size: 24,
                   ),
                 ),
-                Text(
-                  _isLookingForOpponent
-                      ? 'Votre équipe est visible pour les adversaires'
-                      : 'Activez pour être trouvé par d\'autres équipes',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Mode recherche d\'adversaire',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          letterSpacing: -0.5,
+                          color: isDarkMode ? Colors.white : Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _isLookingForOpponent
+                            ? 'Visible par les autres équipes'
+                            : 'Soyez découvert',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: isDarkMode
+                              ? Colors.grey[400]
+                              : Colors.grey[600],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (_isLoadingSearchPrefs)
+                  const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                else
+                  Transform.scale(
+                    scale: 0.9,
+                    child: Switch.adaptive(
+                      value: _isLookingForOpponent,
+                      onChanged: _toggleSearchMode,
+                      activeColor: myAccentVibrantBlue,
+                    ),
+                  ),
               ],
             ),
           ),
-          if (_isLoadingSearchPrefs)
-            const SizedBox(
-              width: 20,
-              height: 20,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
-          else
-            Switch.adaptive(
-              value: _isLookingForOpponent,
-              onChanged: _toggleSearchMode,
-              activeColor: myAccentVibrantBlue,
-            ),
-        ],
+        ),
       ),
     );
   }
@@ -1346,69 +1369,99 @@ class _HomePageState extends State<HomePage> {
                       ),
                     const SizedBox(height: 10),
                     // Bouton pour trouver une équipe
-                    OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const DiscoverTeamsPage(),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.orange.withOpacity(0.15),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
                           ),
-                        );
-                      },
-                      icon: Icon(
-                        Icons.person_search,
-                        color: isDarkMode ? Colors.orange : Colors.orange[700],
+                        ],
                       ),
-                      label: Text(
-                        'Trouver une équipe',
-                        style: TextStyle(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const DiscoverTeamsPage(),
+                            ),
+                          );
+                        },
+                        icon: Icon(
+                          Icons.person_search,
                           color: isDarkMode
                               ? Colors.orange
                               : Colors.orange[700],
-                          fontWeight: FontWeight.bold,
+                          size: 20,
                         ),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        minimumSize: const Size(double.infinity, 50),
-                        side: BorderSide(
-                          color: isDarkMode
-                              ? Colors.orange
-                              : Colors.orange[700]!,
+                        label: Text(
+                          'Trouver une équipe',
+                          style: TextStyle(
+                            color: isDarkMode
+                                ? Colors.orange
+                                : Colors.orange[700],
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
                         ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 52),
+                          side: BorderSide(
+                            color: isDarkMode
+                                ? Colors.orange.withOpacity(0.4)
+                                : Colors.orange.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          backgroundColor: isDarkMode
+                              ? Colors.orange.withOpacity(0.05)
+                              : Colors.orange.withOpacity(0.03),
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     // Bouton pour trouver des adversaires
-                    ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const FindOpponentsPage(),
+                    Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: myAccentVibrantBlue.withOpacity(0.25),
+                            blurRadius: 16,
+                            offset: const Offset(0, 6),
                           ),
-                        );
-                      },
-                      icon: const Icon(
-                        Icons.sports_soccer,
-                        color: MyprimaryDark,
+                        ],
                       ),
-                      label: const Text(
-                        'Trouver des adversaires',
-                        style: TextStyle(
-                          color: MyprimaryDark,
-                          fontWeight: FontWeight.bold,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const FindOpponentsPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.sports_soccer, size: 20),
+                        label: const Text(
+                          'Trouver des adversaires',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
                         ),
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: myAccentVibrantBlue,
-                        minimumSize: const Size(double.infinity, 50),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: myAccentVibrantBlue,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 52),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          elevation: 0,
                         ),
-                        elevation: 5,
                       ),
                     ),
                     const SizedBox(height: 90),
@@ -1495,105 +1548,163 @@ class _HomePageState extends State<HomePage> {
     final isMyTeam = teamsProvider.isCurrentTeamMine;
     final allTeams = teamsProvider.allTeams;
 
-    return Row(
-      children: [
-        IconButton(
-          icon: Icon(
-            Icons.chevron_left,
-            color: teamsProvider.canGoPrevious
-                ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
-                : Colors.grey.withOpacity(0.3),
-            size: 32,
-          ),
-          onPressed: teamsProvider.canGoPrevious
-              ? () => teamsProvider.goToPreviousTeam()
-              : null,
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  Colors.grey[850]!.withOpacity(0.6),
+                  Colors.grey[900]!.withOpacity(0.4),
+                ]
+              : [Colors.white, Colors.grey[50]!],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        Expanded(
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          color: isDarkMode
+              ? Colors.white.withOpacity(0.1)
+              : Colors.grey.withOpacity(0.2),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDarkMode ? 0.3 : 0.08),
+            blurRadius: 30,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Column(
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
+                  IconButton(
+                    icon: Icon(
+                      Icons.chevron_left,
+                      color: teamsProvider.canGoPrevious
+                          ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
+                          : Colors.grey.withOpacity(0.3),
+                      size: 28,
                     ),
-                    decoration: BoxDecoration(
-                      color: isMyTeam
-                          ? myAccentVibrantBlue.withOpacity(0.2)
-                          : Colors.orange.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      isMyTeam ? '👑 Mon équipe' : '👤 Membre',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: isMyTeam ? myAccentVibrantBlue : Colors.orange,
-                        fontWeight: FontWeight.w600,
-                      ),
+                    onPressed: teamsProvider.canGoPrevious
+                        ? () => teamsProvider.goToPreviousTeam()
+                        : null,
+                  ),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: isMyTeam
+                                      ? [
+                                          myAccentVibrantBlue.withOpacity(0.3),
+                                          myAccentVibrantBlue.withOpacity(0.2),
+                                        ]
+                                      : [
+                                          Colors.orange.withOpacity(0.3),
+                                          Colors.orange.withOpacity(0.2),
+                                        ],
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                isMyTeam ? '👑 Mon équipe' : '👤 Membre',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: isMyTeam
+                                      ? myAccentVibrantBlue
+                                      : Colors.orange,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ),
+                            if (isMyTeam)
+                              IconButton(
+                                icon: Icon(
+                                  Icons.edit,
+                                  size: 16,
+                                  color: isDarkMode
+                                      ? myAccentVibrantBlue
+                                      : MyprimaryDark,
+                                ),
+                                onPressed: () =>
+                                    _showEditTeamNameDialog(context),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                              ),
+                            if (currentTeam != null)
+                              _buildChatButton(
+                                context: context,
+                                team: currentTeam,
+                                unreadCount: teamsProvider
+                                    .getUnreadCountForTeam(currentTeam.id),
+                                isDarkMode: isDarkMode,
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          currentTeam?.name ?? 'Mon Équipe',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -1.5,
+                            color: titleColor,
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (allTeams.length > 1)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              '${teamsProvider.currentTeamIndex + 1} / ${allTeams.length}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isDarkMode
+                                    ? Colors.grey[400]
+                                    : Colors.grey[600],
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  if (isMyTeam)
-                    IconButton(
-                      icon: Icon(
-                        Icons.edit,
-                        size: 16,
-                        color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
-                      ),
-                      onPressed: () => _showEditTeamNameDialog(context),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
+                  IconButton(
+                    icon: Icon(
+                      Icons.chevron_right,
+                      color: teamsProvider.canGoNext
+                          ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
+                          : Colors.grey.withOpacity(0.3),
+                      size: 28,
                     ),
-                  // Bouton chat d'équipe avec badge de messages non lus
-                  if (currentTeam != null)
-                    _buildChatButton(
-                      context: context,
-                      team: currentTeam,
-                      unreadCount: teamsProvider.getUnreadCountForTeam(
-                        currentTeam.id,
-                      ),
-                      isDarkMode: isDarkMode,
-                    ),
+                    onPressed: teamsProvider.canGoNext
+                        ? () => teamsProvider.goToNextTeam()
+                        : null,
+                  ),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                currentTeam?.name ?? 'Mon Équipe',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: titleColor,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-              if (allTeams.length > 1)
-                Text(
-                  '${teamsProvider.currentTeamIndex + 1} / ${allTeams.length}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                  ),
-                ),
             ],
           ),
         ),
-        IconButton(
-          icon: Icon(
-            Icons.chevron_right,
-            color: teamsProvider.canGoNext
-                ? (isDarkMode ? myAccentVibrantBlue : MyprimaryDark)
-                : Colors.grey.withOpacity(0.3),
-            size: 32,
-          ),
-          onPressed: teamsProvider.canGoNext
-              ? () => teamsProvider.goToNextTeam()
-              : null,
-        ),
-      ],
+      ),
     );
   }
 
@@ -1663,98 +1774,117 @@ class _HomePageState extends State<HomePage> {
     required bool isMyTeam,
     required bool isDarkMode,
   }) {
-    final Color pitchColor = isDarkMode
-        ? Colors.green[800]!
-        : Colors.green[600]!;
-    final Color lineColor = isDarkMode ? Colors.white70 : Colors.white;
     final starters = team.starters;
 
     return Container(
-      height: 250,
-      width: double.infinity,
+      height: 280,
       decoration: BoxDecoration(
-        color: pitchColor,
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: lineColor, width: 2),
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF2D5016).withOpacity(isDarkMode ? 0.8 : 1.0),
+            const Color(0xFF1A3D0F).withOpacity(isDarkMode ? 0.6 : 0.9),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: Colors.white.withOpacity(0.2), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 40,
+            offset: const Offset(0, 15),
+          ),
+        ],
       ),
-      child: LayoutBuilder(
-        builder: (BuildContext context, BoxConstraints constraints) {
-          final double pitchWidth = constraints.maxWidth;
-          const double pitchHeight = 250;
-          const double minPlayerLeftPos = 20;
-          final double maxPlayerLeftPos =
-              (pitchWidth / 2) - _playerAvatarDiameter - 20;
-          final double segmentSpacing =
-              (maxPlayerLeftPos - minPlayerLeftPos) / 4;
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(28),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+          child: LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double pitchWidth = constraints.maxWidth;
+              const double pitchHeight = 280;
+              const double minPlayerLeftPos = 20;
+              final double maxPlayerLeftPos =
+                  (pitchWidth / 2) - _playerAvatarDiameter - 20;
+              final double segmentSpacing =
+                  (maxPlayerLeftPos - minPlayerLeftPos) / 4;
 
-          return Stack(
-            children: <Widget>[
-              Positioned.fill(
-                child: CustomPaint(painter: _PitchPainter(lineColor)),
-              ),
-              Positioned(
-                left: minPlayerLeftPos,
-                top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                child: _buildPlayerSlot(
-                  context,
-                  slotIndex: 0,
-                  position: PlayerPosition.goalkeeper,
-                  member: _getMemberBySlot(starters, 0),
-                  isDarkMode: isDarkMode,
-                  isEditable: isMyTeam,
-                ),
-              ),
-              Positioned(
-                left: minPlayerLeftPos + segmentSpacing,
-                top: pitchHeight * 0.25 - _playerAvatarRadius - 15,
-                child: _buildPlayerSlot(
-                  context,
-                  slotIndex: 1,
-                  position: PlayerPosition.defender,
-                  member: _getMemberBySlot(starters, 1),
-                  isDarkMode: isDarkMode,
-                  isEditable: isMyTeam,
-                ),
-              ),
-              Positioned(
-                left: minPlayerLeftPos + segmentSpacing,
-                top: pitchHeight * 0.75 - _playerAvatarRadius - 15,
-                child: _buildPlayerSlot(
-                  context,
-                  slotIndex: 2,
-                  position: PlayerPosition.defender,
-                  member: _getMemberBySlot(starters, 2),
-                  isDarkMode: isDarkMode,
-                  isEditable: isMyTeam,
-                ),
-              ),
-              Positioned(
-                left: minPlayerLeftPos + 2 * segmentSpacing,
-                top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                child: _buildPlayerSlot(
-                  context,
-                  slotIndex: 3,
-                  position: PlayerPosition.midfielder,
-                  member: _getMemberBySlot(starters, 3),
-                  isDarkMode: isDarkMode,
-                  isEditable: isMyTeam,
-                ),
-              ),
-              Positioned(
-                left: minPlayerLeftPos + 3 * segmentSpacing,
-                top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                child: _buildPlayerSlot(
-                  context,
-                  slotIndex: 4,
-                  position: PlayerPosition.forward,
-                  member: _getMemberBySlot(starters, 4),
-                  isDarkMode: isDarkMode,
-                  isEditable: isMyTeam,
-                ),
-              ),
-            ],
-          );
-        },
+              return Stack(
+                children: <Widget>[
+                  Positioned.fill(
+                    child: CustomPaint(
+                      painter: _ModernPitchPainter(
+                        Colors.white.withOpacity(0.25),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    left: minPlayerLeftPos,
+                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                    child: _buildPlayerSlot(
+                      context,
+                      slotIndex: 0,
+                      position: PlayerPosition.goalkeeper,
+                      member: _getMemberBySlot(starters, 0),
+                      isDarkMode: isDarkMode,
+                      isEditable: isMyTeam,
+                    ),
+                  ),
+                  Positioned(
+                    left: minPlayerLeftPos + segmentSpacing,
+                    top: pitchHeight * 0.25 - _playerAvatarRadius - 15,
+                    child: _buildPlayerSlot(
+                      context,
+                      slotIndex: 1,
+                      position: PlayerPosition.defender,
+                      member: _getMemberBySlot(starters, 1),
+                      isDarkMode: isDarkMode,
+                      isEditable: isMyTeam,
+                    ),
+                  ),
+                  Positioned(
+                    left: minPlayerLeftPos + segmentSpacing,
+                    top: pitchHeight * 0.75 - _playerAvatarRadius - 15,
+                    child: _buildPlayerSlot(
+                      context,
+                      slotIndex: 2,
+                      position: PlayerPosition.defender,
+                      member: _getMemberBySlot(starters, 2),
+                      isDarkMode: isDarkMode,
+                      isEditable: isMyTeam,
+                    ),
+                  ),
+                  Positioned(
+                    left: minPlayerLeftPos + 2 * segmentSpacing,
+                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                    child: _buildPlayerSlot(
+                      context,
+                      slotIndex: 3,
+                      position: PlayerPosition.midfielder,
+                      member: _getMemberBySlot(starters, 3),
+                      isDarkMode: isDarkMode,
+                      isEditable: isMyTeam,
+                    ),
+                  ),
+                  Positioned(
+                    left: minPlayerLeftPos + 3 * segmentSpacing,
+                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
+                    child: _buildPlayerSlot(
+                      context,
+                      slotIndex: 4,
+                      position: PlayerPosition.forward,
+                      member: _getMemberBySlot(starters, 4),
+                      isDarkMode: isDarkMode,
+                      isEditable: isMyTeam,
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }
@@ -3284,6 +3414,85 @@ class _PitchPainter extends CustomPainter {
         size.height * 0.25,
         size.width * 0.15,
         size.height * 0.5,
+      ),
+      paint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _ModernPitchPainter extends CustomPainter {
+  final Color lineColor;
+  _ModernPitchPainter(this.lineColor);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()
+      ..color = lineColor
+      ..strokeWidth = 1.5
+      ..style = PaintingStyle.stroke;
+
+    // Bordure du terrain
+    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
+
+    // Ligne médiane
+    canvas.drawLine(
+      Offset(size.width / 2, 0),
+      Offset(size.width / 2, size.height),
+      paint,
+    );
+
+    // Cercle central
+    canvas.drawCircle(
+      Offset(size.width / 2, size.height / 2),
+      size.height * 0.12,
+      paint,
+    );
+
+    // Point central
+    final centerPaint = Paint()
+      ..color = lineColor
+      ..style = PaintingStyle.fill;
+    canvas.drawCircle(Offset(size.width / 2, size.height / 2), 2, centerPaint);
+
+    // Zones de but
+    canvas.drawRect(
+      Rect.fromLTWH(
+        0,
+        size.height * 0.25,
+        size.width * 0.12,
+        size.height * 0.5,
+      ),
+      paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        size.width * 0.88,
+        size.height * 0.25,
+        size.width * 0.12,
+        size.height * 0.5,
+      ),
+      paint,
+    );
+
+    // Petites zones
+    canvas.drawRect(
+      Rect.fromLTWH(
+        0,
+        size.height * 0.35,
+        size.width * 0.06,
+        size.height * 0.3,
+      ),
+      paint,
+    );
+    canvas.drawRect(
+      Rect.fromLTWH(
+        size.width * 0.94,
+        size.height * 0.35,
+        size.width * 0.06,
+        size.height * 0.3,
       ),
       paint,
     );

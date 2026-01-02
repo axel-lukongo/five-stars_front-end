@@ -22,27 +22,27 @@ class ApiConfig {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _getEnv('AUTH_URL', 'http://10.0.2.2:8000');
     }
-    return _getEnv('AUTH_URL', 'http://127.0.0.1:8000');
+    return _getEnv('AUTH_URL', 'http://localhost:8000/auth');
   }
 
   static String get friendsUrl {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _getEnv('FRIENDS_URL', 'http://10.0.2.2:8001');
     }
-    return _getEnv('FRIENDS_URL', 'http://127.0.0.1:8001');
+    return _getEnv('FRIENDS_URL', 'http://localhost:8001/friends');
   }
 
   static String get messagesUrl {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _getEnv('MESSAGES_URL', 'http://10.0.2.2:8002');
     }
-    return _getEnv('MESSAGES_URL', 'http://127.0.0.1:8002');
+    return _getEnv('MESSAGES_URL', 'http://localhost:8002/messages');
   }
 
   static String get teamsUrl {
     if (defaultTargetPlatform == TargetPlatform.android) {
       return _getEnv('TEAMS_URL', 'http://10.0.2.2:8003');
     }
-    return _getEnv('TEAMS_URL', 'http://127.0.0.1:8003');
+    return _getEnv('TEAMS_URL', 'http://localhost:8003/teams');
   }
 }
