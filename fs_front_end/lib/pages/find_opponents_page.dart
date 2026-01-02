@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:intl/intl.dart';
 import '../theme_config/colors_config.dart';
 import '../services/teams_service.dart';
@@ -13,6 +14,83 @@ class FindOpponentsPage extends StatefulWidget {
 
 class _FindOpponentsPageState extends State<FindOpponentsPage>
     with SingleTickerProviderStateMixin {
+  // --- Widgets glass premium ---
+  Widget _buildGlassContainer({
+    required Widget child,
+    required Gradient gradient,
+    double borderRadius = 20,
+    double blur = 10,
+    List<BoxShadow>? boxShadow,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(borderRadius),
+            boxShadow:
+                boxShadow ??
+                [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassActionButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required Gradient gradient,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: Colors.white, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   late TabController _tabController;
   String? _selectedSkillLevel;
   bool _isLoading = false;
@@ -238,180 +316,197 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
   }
 
   Widget _buildOpponentCard(TeamSearchResult team, bool isDarkMode) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: isDarkMode ? MyprimaryDark : Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // Logo équipe
-                CircleAvatar(
-                  radius: 28,
-                  backgroundColor: myAccentVibrantBlue.withOpacity(0.2),
-                  backgroundImage: team.teamLogoUrl != null
-                      ? NetworkImage(team.teamLogoUrl!)
-                      : null,
-                  child: team.teamLogoUrl == null
-                      ? Text(
-                          team.teamName[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: myAccentVibrantBlue,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Logo équipe
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: myAccentVibrantBlue.withOpacity(0.2),
+                    backgroundImage: team.teamLogoUrl != null
+                        ? NetworkImage(team.teamLogoUrl!)
+                        : null,
+                    child: team.teamLogoUrl == null
+                        ? Text(
+                            team.teamName[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: myAccentVibrantBlue,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 20,
+                            ),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          team.teamName,
+                          style: TextStyle(
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
-                            fontSize: 20,
+                            color: isDarkMode
+                                ? myLightBackground
+                                : MyprimaryDark,
                           ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        team.teamName,
+                        ),
+                        Text(
+                          'par @${team.ownerUsername}',
+                          style: TextStyle(
+                            color: isDarkMode
+                                ? Colors.grey[400]
+                                : Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Niveau
+                  if (team.skillLevel != null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _getSkillLevelColor(
+                          team.skillLevel!,
+                        ).withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        _capitalizeFirst(team.skillLevel!),
                         style: TextStyle(
-                          fontSize: 18,
+                          color: _getSkillLevelColor(team.skillLevel!),
                           fontWeight: FontWeight.bold,
-                          color: isDarkMode ? myLightBackground : MyprimaryDark,
+                          fontSize: 12,
                         ),
                       ),
-                      Text(
-                        'par @${team.ownerUsername}',
-                        style: TextStyle(
-                          color: isDarkMode
-                              ? Colors.grey[400]
-                              : Colors.grey[600],
-                          fontSize: 12,
+                    ),
+                ],
+              ),
+
+              // Infos
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.people, size: 16, color: Colors.grey[500]),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${team.membersCount} membres',
+                    style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                  ),
+                  const SizedBox(width: 16),
+                  if (team.preferredDays != null &&
+                      team.preferredDays!.isNotEmpty) ...[
+                    Icon(
+                      Icons.calendar_today,
+                      size: 16,
+                      color: Colors.grey[500],
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        team.preferredDays!.join(', '),
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+
+              // Lieu préféré
+              if (team.preferredLocations != null) ...[
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.location_on, size: 16, color: Colors.grey[500]),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        team.preferredLocations!,
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+
+              // Description
+              if (team.description != null && team.description!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDarkMode
+                        ? Colors.grey[800]!.withOpacity(0.5)
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.format_quote,
+                        color: Colors.grey[500],
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          team.description!,
+                          style: TextStyle(
+                            color: isDarkMode
+                                ? Colors.grey[300]
+                                : Colors.grey[700],
+                            fontStyle: FontStyle.italic,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                // Niveau
-                if (team.skillLevel != null)
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: _getSkillLevelColor(
-                        team.skillLevel!,
-                      ).withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      _capitalizeFirst(team.skillLevel!),
-                      style: TextStyle(
-                        color: _getSkillLevelColor(team.skillLevel!),
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                      ),
-                    ),
-                  ),
               ],
-            ),
 
-            // Infos
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Icon(Icons.people, size: 16, color: Colors.grey[500]),
-                const SizedBox(width: 4),
-                Text(
-                  '${team.membersCount} membres',
-                  style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                ),
-                const SizedBox(width: 16),
-                if (team.preferredDays != null &&
-                    team.preferredDays!.isNotEmpty) ...[
-                  Icon(Icons.calendar_today, size: 16, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      team.preferredDays!.join(', '),
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-
-            // Lieu préféré
-            if (team.preferredLocations != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.location_on, size: 16, color: Colors.grey[500]),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      team.preferredLocations!,
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            ],
-
-            // Description
-            if (team.description != null && team.description!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDarkMode
-                      ? Colors.grey[800]!.withOpacity(0.5)
-                      : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.format_quote, color: Colors.grey[500], size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        team.description!,
-                        style: TextStyle(
-                          color: isDarkMode
-                              ? Colors.grey[300]
-                              : Colors.grey[700],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
+              // Bouton défier
+              const SizedBox(height: 16),
+              _buildGlassActionButton(
+                onPressed: () => _showChallengeDialog(context, team),
+                icon: Icons.sports_soccer,
+                label: 'Défier cette équipe',
+                gradient: LinearGradient(
+                  colors: <Color>[
+                    myAccentVibrantBlue.withOpacity(0.8),
+                    myAccentVibrantBlue.withOpacity(0.6),
                   ],
                 ),
               ),
             ],
-
-            // Bouton défier
-            const SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => _showChallengeDialog(context, team),
-                icon: const Icon(Icons.sports_soccer, size: 20),
-                label: const Text('Défier cette équipe'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: myAccentVibrantBlue,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -484,239 +579,264 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
         ? challenge.challengedOwnerUsername
         : challenge.challengerOwnerUsername;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: isDarkMode ? MyprimaryDark : Colors.white,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // Logo équipe adversaire
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: myAccentVibrantBlue.withOpacity(0.2),
-                  backgroundImage: opponentLogoUrl != null
-                      ? NetworkImage(opponentLogoUrl)
-                      : null,
-                  child: opponentLogoUrl == null
-                      ? Text(
-                          opponentTeamName[0].toUpperCase(),
-                          style: const TextStyle(
-                            color: myAccentVibrantBlue,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isSent ? 'Défi envoyé à' : 'Défi de',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                      ),
-                      Text(
-                        opponentTeamName,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? myLightBackground : MyprimaryDark,
-                        ),
-                      ),
-                      Text(
-                        '@$opponentUsername',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-                      ),
-                    ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Logo équipe adversaire
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: myAccentVibrantBlue.withOpacity(0.2),
+                    backgroundImage: opponentLogoUrl != null
+                        ? NetworkImage(opponentLogoUrl)
+                        : null,
+                    child: opponentLogoUrl == null
+                        ? Text(
+                            opponentTeamName[0].toUpperCase(),
+                            style: const TextStyle(
+                              color: myAccentVibrantBlue,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          )
+                        : null,
                   ),
-                ),
-                _buildStatusBadge(challenge.status),
-              ],
-            ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isSent ? 'Défi envoyé à' : 'Défi de',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                        Text(
+                          opponentTeamName,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: isDarkMode
+                                ? myLightBackground
+                                : MyprimaryDark,
+                          ),
+                        ),
+                        Text(
+                          '@$opponentUsername',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[500],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _buildStatusBadge(challenge.status),
+                ],
+              ),
 
-            // Date et lieu proposés
-            if (challenge.proposedDate != null ||
-                challenge.proposedLocation != null) ...[
-              const SizedBox(height: 12),
-              const Divider(),
-              const SizedBox(height: 8),
-              if (challenge.proposedDate != null)
-                Row(
-                  children: [
-                    Icon(
-                      Icons.calendar_today,
-                      size: 16,
-                      color: Colors.grey[500],
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      DateFormat(
-                        'EEEE d MMMM à HH:mm',
-                        'fr_FR',
-                      ).format(challenge.proposedDate!),
-                      style: TextStyle(
-                        color: isDarkMode ? Colors.white70 : Colors.black87,
+              // Date et lieu proposés
+              if (challenge.proposedDate != null ||
+                  challenge.proposedLocation != null) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                if (challenge.proposedDate != null)
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.calendar_today,
+                        size: 16,
+                        color: Colors.grey[500],
                       ),
-                    ),
-                  ],
-                ),
-              if (challenge.proposedLocation != null) ...[
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(Icons.location_on, size: 16, color: Colors.grey[500]),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        challenge.proposedLocation!,
+                      const SizedBox(width: 8),
+                      Text(
+                        DateFormat(
+                          'EEEE d MMMM à HH:mm',
+                          'fr_FR',
+                        ).format(challenge.proposedDate!),
                         style: TextStyle(
                           color: isDarkMode ? Colors.white70 : Colors.black87,
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                if (challenge.proposedLocation != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.location_on,
+                        size: 16,
+                        color: Colors.grey[500],
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          challenge.proposedLocation!,
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.white70 : Colors.black87,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ],
+
+              // Message
+              if (challenge.message != null &&
+                  challenge.message!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: isDarkMode
+                        ? Colors.grey[800]!.withOpacity(0.5)
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.message, color: Colors.grey[500], size: 18),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          challenge.message!,
+                          style: TextStyle(
+                            color: isDarkMode
+                                ? Colors.grey[300]
+                                : Colors.grey[700],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ],
 
-            // Message
-            if (challenge.message != null && challenge.message!.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDarkMode
-                      ? Colors.grey[800]!.withOpacity(0.5)
-                      : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.message, color: Colors.grey[500], size: 18),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        challenge.message!,
-                        style: TextStyle(
-                          color: isDarkMode
-                              ? Colors.grey[300]
-                              : Colors.grey[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // Score (si match terminé)
-            if (challenge.status == ChallengeStatus.completed &&
-                challenge.challengerScore != null &&
-                challenge.challengedScore != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: myAccentVibrantBlue.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      challenge.challengerTeamName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      '${challenge.challengerScore} - ${challenge.challengedScore}',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: myAccentVibrantBlue,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Text(
-                      challenge.challengedTeamName,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-
-            // Actions
-            if (challenge.status == ChallengeStatus.pending) ...[
-              const SizedBox(height: 16),
-              if (isSent)
-                // Bouton annuler pour les défis envoyés
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _cancelChallenge(challenge.id),
-                    icon: const Icon(Icons.cancel, size: 18),
-                    label: const Text('Annuler le défi'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                    ),
+              // Score (si match terminé)
+              if (challenge.status == ChallengeStatus.completed &&
+                  challenge.challengerScore != null &&
+                  challenge.challengedScore != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: myAccentVibrantBlue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                )
-              else
-                // Boutons accepter/refuser pour les défis reçus
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            _respondToChallenge(challenge.id, false),
-                        icon: const Icon(Icons.close, size: 18),
-                        label: const Text('Refuser'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        challenge.challengerTeamName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(width: 16),
+                      Text(
+                        '${challenge.challengerScore} - ${challenge.challengedScore}',
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: myAccentVibrantBlue,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () =>
-                            _respondToChallenge(challenge.id, true),
-                        icon: const Icon(Icons.check, size: 18),
-                        label: const Text('Accepter'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
+                      const SizedBox(width: 16),
+                      Text(
+                        challenge.challengedTeamName,
+                        style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-            ],
+              ],
 
-            // Section score (si match accepté ou terminé)
-            if (challenge.status == ChallengeStatus.accepted ||
-                challenge.status == ChallengeStatus.completed) ...[
-              const SizedBox(height: 16),
-              _buildScoreSection(challenge, isSent, isDarkMode),
-            ],
+              // Actions
+              if (challenge.status == ChallengeStatus.pending) ...[
+                const SizedBox(height: 16),
+                if (isSent)
+                  // Bouton annuler pour les défis envoyés
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => _cancelChallenge(challenge.id),
+                      icon: const Icon(Icons.cancel, size: 18),
+                      label: const Text('Annuler le défi'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                    ),
+                  )
+                else
+                  // Boutons accepter/refuser pour les défis reçus
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () =>
+                              _respondToChallenge(challenge.id, false),
+                          icon: const Icon(Icons.close, size: 18),
+                          label: const Text('Refuser'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () =>
+                              _respondToChallenge(challenge.id, true),
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text('Accepter'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+              ],
 
-            // Date du défi
-            const SizedBox(height: 8),
-            Text(
-              'Défi du ${DateFormat('d MMM yyyy', 'fr_FR').format(challenge.createdAt)}',
-              style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-            ),
-          ],
+              // Section score (si match accepté ou terminé)
+              if (challenge.status == ChallengeStatus.accepted ||
+                  challenge.status == ChallengeStatus.completed) ...[
+                const SizedBox(height: 16),
+                _buildScoreSection(challenge, isSent, isDarkMode),
+              ],
+
+              // Date du défi
+              const SizedBox(height: 8),
+              Text(
+                'Défi du ${DateFormat('d MMM yyyy', 'fr_FR').format(challenge.createdAt)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey[500]),
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../theme_config/colors_config.dart';
 import '../providers/friends_provider.dart';
@@ -18,6 +19,37 @@ class _FriendsListPageState extends State<FriendsListPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
+
+  Widget _buildGlassContainer({
+    required Widget child,
+    required Gradient gradient,
+    double borderRadius = 20,
+    double blur = 10,
+    List<BoxShadow>? boxShadow,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(borderRadius),
+            boxShadow:
+                boxShadow ??
+                [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -199,177 +231,199 @@ class _FriendsListPageState extends State<FriendsListPage>
   Widget _buildFriendCard(FriendWithInfo friend, bool isDarkMode) {
     final Color cardTitleColor = isDarkMode ? myLightBackground : MyprimaryDark;
 
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        leading: CircleAvatar(
-          radius: 25,
-          backgroundColor: MyprimaryDark,
-          backgroundImage: friend.user.avatarUrl != null
-              ? NetworkImage(friend.user.avatarUrl!)
-              : null,
-          child: friend.user.avatarUrl == null
-              ? Text(
-                  friend.user.username.isNotEmpty
-                      ? friend.user.username[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: myAccentVibrantBlue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        title: Text(
-          friend.user.username,
-          style: TextStyle(fontWeight: FontWeight.bold, color: cardTitleColor),
-        ),
-        subtitle: Text(
-          friend.user.preferredPosition ?? 'Position non définie',
-          style: TextStyle(
-            color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(12),
+          leading: CircleAvatar(
+            radius: 25,
+            backgroundColor: MyprimaryDark,
+            backgroundImage: friend.user.avatarUrl != null
+                ? NetworkImage(friend.user.avatarUrl!)
+                : null,
+            child: friend.user.avatarUrl == null
+                ? Text(
+                    friend.user.username.isNotEmpty
+                        ? friend.user.username[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: myAccentVibrantBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (friend.user.rating != null)
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: myAccentVibrantBlue.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '⭐ ${friend.user.rating!.toStringAsFixed(1)}',
-                  style: const TextStyle(fontSize: 12),
-                ),
-              ),
-            const SizedBox(width: 8),
-            Consumer<MessagesProvider>(
-              builder: (context, messagesProvider, _) {
-                final unreadCount = messagesProvider.getUnreadCountForUser(
-                  friend.user.id,
-                );
-                return Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    IconButton(
-                      icon: Icon(
-                        Icons.chat_bubble_outline,
-                        color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
-                      ),
-                      onPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute<void>(
-                            builder: (context) => ChatPage(
-                              friendId: friend.user.id,
-                              friendName: friend.user.username,
-                              friendAvatarUrl: friend.user.avatarUrl,
-                            ),
-                          ),
-                        );
-                        // Note: les conversations sont rechargées dans closeConversation()
-                      },
-                    ),
-                    if (unreadCount > 0)
-                      Positioned(
-                        right: 4,
-                        top: 4,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 18,
-                            minHeight: 18,
-                          ),
-                          child: Text(
-                            unreadCount > 9 ? '9+' : '$unreadCount',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                  ],
-                );
-              },
+          title: Text(
+            friend.user.username,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: cardTitleColor,
             ),
-            PopupMenuButton<String>(
-              onSelected: (value) async {
-                if (value == 'profile') {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => UserProfilePage(
-                        userBasicInfo: friend.user,
-                        showAddFriendButton: false,
-                      ),
-                    ),
+          ),
+          subtitle: Text(
+            friend.user.preferredPosition ?? 'Position non définie',
+            style: TextStyle(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+            ),
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (friend.user.rating != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: myAccentVibrantBlue.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '⭐ ${friend.user.rating!.toStringAsFixed(1)}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              const SizedBox(width: 8),
+              Consumer<MessagesProvider>(
+                builder: (context, messagesProvider, _) {
+                  final unreadCount = messagesProvider.getUnreadCountForUser(
+                    friend.user.id,
                   );
-                } else if (value == 'remove') {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (context) => AlertDialog(
-                      title: const Text('Supprimer cet ami ?'),
-                      content: Text(
-                        'Voulez-vous vraiment supprimer ${friend.user.username} de votre liste d\'amis ?',
-                      ),
-                      actions: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, false),
-                          child: const Text('Annuler'),
+                  return Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          Icons.chat_bubble_outline,
+                          color: isDarkMode
+                              ? myAccentVibrantBlue
+                              : MyprimaryDark,
                         ),
-                        TextButton(
-                          onPressed: () => Navigator.pop(context, true),
-                          child: const Text(
-                            'Supprimer',
-                            style: TextStyle(color: Colors.red),
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute<void>(
+                              builder: (context) => ChatPage(
+                                friendId: friend.user.id,
+                                friendName: friend.user.username,
+                                friendAvatarUrl: friend.user.avatarUrl,
+                              ),
+                            ),
+                          );
+                          // Note: les conversations sont rechargées dans closeConversation()
+                        },
+                      ),
+                      if (unreadCount > 0)
+                        Positioned(
+                          right: 4,
+                          top: 4,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: const BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                              minWidth: 18,
+                              minHeight: 18,
+                            ),
+                            child: Text(
+                              unreadCount > 9 ? '9+' : '$unreadCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
                           ),
                         ),
+                    ],
+                  );
+                },
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) async {
+                  if (value == 'profile') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => UserProfilePage(
+                          userBasicInfo: friend.user,
+                          showAddFriendButton: false,
+                        ),
+                      ),
+                    );
+                  } else if (value == 'remove') {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (context) => AlertDialog(
+                        title: const Text('Supprimer cet ami ?'),
+                        content: Text(
+                          'Voulez-vous vraiment supprimer ${friend.user.username} de votre liste d\'amis ?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, false),
+                            child: const Text('Annuler'),
+                          ),
+                          TextButton(
+                            onPressed: () => Navigator.pop(context, true),
+                            child: const Text(
+                              'Supprimer',
+                              style: TextStyle(color: Colors.red),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirm == true && mounted) {
+                      await context.read<FriendsProvider>().removeFriend(
+                        friend.friendshipId,
+                      );
+                    }
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'profile',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person, color: myAccentVibrantBlue),
+                        SizedBox(width: 8),
+                        Text('Voir le profil'),
                       ],
                     ),
-                  );
-                  if (confirm == true && mounted) {
-                    await context.read<FriendsProvider>().removeFriend(
-                      friend.friendshipId,
-                    );
-                  }
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'profile',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person, color: myAccentVibrantBlue),
-                      SizedBox(width: 8),
-                      Text('Voir le profil'),
-                    ],
                   ),
-                ),
-                const PopupMenuItem(
-                  value: 'remove',
-                  child: Row(
-                    children: [
-                      Icon(Icons.person_remove, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Supprimer'),
-                    ],
+                  const PopupMenuItem(
+                    value: 'remove',
+                    child: Row(
+                      children: [
+                        Icon(Icons.person_remove, color: Colors.red),
+                        SizedBox(width: 8),
+                        Text('Supprimer'),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-          ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -445,74 +499,88 @@ class _FriendsListPageState extends State<FriendsListPage>
 
   /// Carte de demande reçue
   Widget _buildPendingReceivedCard(PendingRequest request, bool isDarkMode) {
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        onTap: () {
-          // Naviguer vers le profil de l'utilisateur
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UserProfilePage(
-                userBasicInfo: request.fromUser,
-                showAddFriendButton: false,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(12),
+          onTap: () {
+            // Naviguer vers le profil de l'utilisateur
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserProfilePage(
+                  userBasicInfo: request.fromUser,
+                  showAddFriendButton: false,
+                ),
               ),
-            ),
-          );
-        },
-        leading: CircleAvatar(
-          radius: 25,
-          backgroundColor: MyprimaryDark,
-          backgroundImage: request.fromUser.avatarUrl != null
-              ? NetworkImage(request.fromUser.avatarUrl!)
-              : null,
-          child: request.fromUser.avatarUrl == null
-              ? Text(
-                  request.fromUser.username.isNotEmpty
-                      ? request.fromUser.username[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: myAccentVibrantBlue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
-        ),
-        title: Text(
-          request.fromUser.username,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDarkMode ? myLightBackground : MyprimaryDark,
+            );
+          },
+          leading: CircleAvatar(
+            radius: 25,
+            backgroundColor: MyprimaryDark,
+            backgroundImage: request.fromUser.avatarUrl != null
+                ? NetworkImage(request.fromUser.avatarUrl!)
+                : null,
+            child: request.fromUser.avatarUrl == null
+                ? Text(
+                    request.fromUser.username.isNotEmpty
+                        ? request.fromUser.username[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: myAccentVibrantBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
           ),
-        ),
-        subtitle: Text(
-          'Veut devenir votre ami',
-          style: TextStyle(
-            color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+          title: Text(
+            request.fromUser.username,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDarkMode ? myLightBackground : MyprimaryDark,
+            ),
           ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.check_circle, color: Colors.green),
-              onPressed: () async {
-                await context.read<FriendsProvider>().acceptFriendRequest(
-                  request.friendshipId,
-                );
-              },
+          subtitle: Text(
+            'Veut devenir votre ami',
+            style: TextStyle(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
             ),
-            IconButton(
-              icon: const Icon(Icons.cancel, color: Colors.red),
-              onPressed: () async {
-                await context.read<FriendsProvider>().rejectFriendRequest(
-                  request.friendshipId,
-                );
-              },
-            ),
-          ],
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.check_circle, color: Colors.green),
+                onPressed: () async {
+                  await context.read<FriendsProvider>().acceptFriendRequest(
+                    request.friendshipId,
+                  );
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.cancel, color: Colors.red),
+                onPressed: () async {
+                  await context.read<FriendsProvider>().rejectFriendRequest(
+                    request.friendshipId,
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -520,60 +588,74 @@ class _FriendsListPageState extends State<FriendsListPage>
 
   /// Carte de demande envoyée
   Widget _buildPendingSentCard(FriendWithInfo request, bool isDarkMode) {
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        onTap: () {
-          // Naviguer vers le profil de l'utilisateur
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UserProfilePage(
-                userBasicInfo: request.user,
-                showAddFriendButton: false,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(12),
+          onTap: () {
+            // Naviguer vers le profil de l'utilisateur
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserProfilePage(
+                  userBasicInfo: request.user,
+                  showAddFriendButton: false,
+                ),
               ),
-            ),
-          );
-        },
-        leading: CircleAvatar(
-          radius: 25,
-          backgroundColor: MyprimaryDark,
-          backgroundImage: request.user.avatarUrl != null
-              ? NetworkImage(request.user.avatarUrl!)
-              : null,
-          child: request.user.avatarUrl == null
-              ? Text(
-                  request.user.username.isNotEmpty
-                      ? request.user.username[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: myAccentVibrantBlue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
-        ),
-        title: Text(
-          request.user.username,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDarkMode ? myLightBackground : MyprimaryDark,
-          ),
-        ),
-        subtitle: Text(
-          'En attente de réponse',
-          style: TextStyle(color: Colors.orange[400]),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.close, color: Colors.grey),
-          tooltip: 'Annuler la demande',
-          onPressed: () async {
-            await context.read<FriendsProvider>().removeFriend(
-              request.friendshipId,
             );
           },
+          leading: CircleAvatar(
+            radius: 25,
+            backgroundColor: MyprimaryDark,
+            backgroundImage: request.user.avatarUrl != null
+                ? NetworkImage(request.user.avatarUrl!)
+                : null,
+            child: request.user.avatarUrl == null
+                ? Text(
+                    request.user.username.isNotEmpty
+                        ? request.user.username[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: myAccentVibrantBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
+          ),
+          title: Text(
+            request.user.username,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDarkMode ? myLightBackground : MyprimaryDark,
+            ),
+          ),
+          subtitle: Text(
+            'En attente de réponse',
+            style: TextStyle(color: Colors.orange[400]),
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.close, color: Colors.grey),
+            tooltip: 'Annuler la demande',
+            onPressed: () async {
+              await context.read<FriendsProvider>().removeFriend(
+                request.friendshipId,
+              );
+            },
+          ),
         ),
       ),
     );
@@ -654,55 +736,69 @@ class _FriendsListPageState extends State<FriendsListPage>
 
   /// Carte de résultat de recherche
   Widget _buildSearchResultCard(SearchUserResult result, bool isDarkMode) {
-    return Card(
-      elevation: 4,
-      margin: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(12),
-        onTap: () {
-          // Naviguer vers le profil de l'utilisateur
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => UserProfilePage(
-                userBasicInfo: result.user,
-                showAddFriendButton: result.friendshipStatus != 'accepted',
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6.0, horizontal: 8.0),
+      child: _buildGlassContainer(
+        gradient: LinearGradient(
+          colors: isDarkMode
+              ? [
+                  myAccentVibrantBlue.withOpacity(0.13),
+                  Colors.black.withOpacity(0.10),
+                ]
+              : [
+                  myAccentVibrantBlue.withOpacity(0.10),
+                  Colors.white.withOpacity(0.10),
+                ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        child: ListTile(
+          contentPadding: const EdgeInsets.all(12),
+          onTap: () {
+            // Naviguer vers le profil de l'utilisateur
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => UserProfilePage(
+                  userBasicInfo: result.user,
+                  showAddFriendButton: result.friendshipStatus != 'accepted',
+                ),
               ),
+            );
+          },
+          leading: CircleAvatar(
+            radius: 25,
+            backgroundColor: MyprimaryDark,
+            backgroundImage: result.user.avatarUrl != null
+                ? NetworkImage(result.user.avatarUrl!)
+                : null,
+            child: result.user.avatarUrl == null
+                ? Text(
+                    result.user.username.isNotEmpty
+                        ? result.user.username[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(
+                      color: myAccentVibrantBlue,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  )
+                : null,
+          ),
+          title: Text(
+            result.user.username,
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: isDarkMode ? myLightBackground : MyprimaryDark,
             ),
-          );
-        },
-        leading: CircleAvatar(
-          radius: 25,
-          backgroundColor: MyprimaryDark,
-          backgroundImage: result.user.avatarUrl != null
-              ? NetworkImage(result.user.avatarUrl!)
-              : null,
-          child: result.user.avatarUrl == null
-              ? Text(
-                  result.user.username.isNotEmpty
-                      ? result.user.username[0].toUpperCase()
-                      : '?',
-                  style: const TextStyle(
-                    color: myAccentVibrantBlue,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
-        ),
-        title: Text(
-          result.user.username,
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            color: isDarkMode ? myLightBackground : MyprimaryDark,
           ),
-        ),
-        subtitle: Text(
-          result.user.preferredPosition ?? 'Position non définie',
-          style: TextStyle(
-            color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+          subtitle: Text(
+            result.user.preferredPosition ?? 'Position non définie',
+            style: TextStyle(
+              color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+            ),
           ),
+          trailing: _buildSearchActionButton(result),
         ),
-        trailing: _buildSearchActionButton(result),
       ),
     );
   }

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import 'package:provider/provider.dart';
 import '../theme_config/colors_config.dart';
 import '../models/user_model.dart';
@@ -24,6 +25,37 @@ class UserProfilePage extends StatefulWidget {
 }
 
 class _UserProfilePageState extends State<UserProfilePage> {
+  Widget _buildGlassContainer({
+    required Widget child,
+    required Gradient gradient,
+    double borderRadius = 20,
+    double blur = 10,
+    List<BoxShadow>? boxShadow,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(borderRadius),
+            boxShadow:
+                boxShadow ??
+                [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
   UserModel? _fullUser;
   bool _isLoading = true;
 
@@ -176,8 +208,20 @@ class _UserProfilePageState extends State<UserProfilePage> {
               _buildStatsRow(user, isDarkMode),
               const SizedBox(height: 30),
               // Détails du profil
-              Card(
-                elevation: 4,
+              _buildGlassContainer(
+                gradient: LinearGradient(
+                  colors: isDarkMode
+                      ? [
+                          myAccentVibrantBlue.withOpacity(0.18),
+                          Colors.black.withOpacity(0.10),
+                        ]
+                      : [
+                          myAccentVibrantBlue.withOpacity(0.13),
+                          Colors.white.withOpacity(0.10),
+                        ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
