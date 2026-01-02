@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:ui';
 import '../theme_config/colors_config.dart';
+import '../widgets/win_rate_gauge.dart';
 import 'package:provider/provider.dart';
 import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
@@ -8,6 +10,82 @@ import '../auth/login.dart';
 import 'edit_profile_page.dart';
 
 class ProfilePage extends StatelessWidget {
+  Widget _buildGlassContainer({
+    required Widget child,
+    required Gradient gradient,
+    double borderRadius = 20,
+    double blur = 10,
+    List<BoxShadow>? boxShadow,
+  }) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(borderRadius),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(borderRadius),
+            boxShadow:
+                boxShadow ??
+                [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.08),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGlassActionButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required Gradient gradient,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
+          decoration: BoxDecoration(
+            gradient: gradient,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: Colors.black.withOpacity(0.2),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: <Widget>[
+              Icon(icon, color: Colors.white, size: 24),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.3,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   const ProfilePage({super.key});
 
   @override
@@ -120,8 +198,20 @@ class ProfilePage extends StatelessWidget {
                   // Statistiques
                   _buildStatsRow(user, isDarkMode),
                   const SizedBox(height: 30),
-                  Card(
-                    elevation: 4,
+                  _buildGlassContainer(
+                    gradient: LinearGradient(
+                      colors: isDarkMode
+                          ? [
+                              myAccentVibrantBlue.withOpacity(0.18),
+                              Colors.black.withOpacity(0.10),
+                            ]
+                          : [
+                              myAccentVibrantBlue.withOpacity(0.13),
+                              Colors.white.withOpacity(0.10),
+                            ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
                     child: Padding(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
@@ -157,7 +247,7 @@ class ProfilePage extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  ElevatedButton.icon(
+                  _buildGlassActionButton(
                     onPressed: () async {
                       await authProvider.logout();
                       if (context.mounted) {
@@ -167,21 +257,13 @@ class ProfilePage extends StatelessWidget {
                         );
                       }
                     },
-                    icon: const Icon(Icons.logout, color: myAccentVibrantBlue),
-                    label: const Text(
-                      'Déconnexion',
-                      style: TextStyle(
-                        color: myAccentVibrantBlue,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: MyprimaryDark,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      elevation: 5,
+                    icon: Icons.logout,
+                    label: 'Déconnexion',
+                    gradient: LinearGradient(
+                      colors: <Color>[
+                        Colors.orange.withOpacity(0.8),
+                        Colors.orange.withOpacity(0.6),
+                      ],
                     ),
                   ),
                   const SizedBox(height: 90),
@@ -195,24 +277,52 @@ class ProfilePage extends StatelessWidget {
   }
 
   Widget _buildStatsRow(UserModel user, bool isDarkMode) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
       children: [
-        _buildStatItem('Matchs', user.matchesPlayed.toString(), isDarkMode),
-        _buildStatItem('Victoires', user.matchesWon.toString(), isDarkMode),
-        _buildStatItem('Défaites', user.matchesLost.toString(), isDarkMode),
-        _buildStatItem(
-          'Win Rate',
-          '${user.winRate.toStringAsFixed(0)}%',
-          isDarkMode,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildStatItem(
+              'Matchs',
+              user.matchesPlayed.toString(),
+              isDarkMode,
+              emoji: '⚽',
+            ),
+            _buildStatItem(
+              'Victoires',
+              user.matchesWon.toString(),
+              isDarkMode,
+              emoji: '🏆',
+            ),
+            _buildStatItem(
+              'Défaites',
+              user.matchesLost.toString(),
+              isDarkMode,
+              emoji: '❌',
+            ),
+            WinRateGauge(winRate: user.winRate / 100.0, isDarkMode: isDarkMode),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Divider(
+          color: isDarkMode ? Colors.grey[800] : Colors.grey[300],
+          thickness: 1.2,
+          indent: 10,
+          endIndent: 10,
         ),
       ],
     );
   }
 
-  Widget _buildStatItem(String label, String value, bool isDarkMode) {
+  Widget _buildStatItem(
+    String label,
+    String value,
+    bool isDarkMode, {
+    String? emoji,
+  }) {
     return Column(
       children: [
+        if (emoji != null) Text(emoji, style: const TextStyle(fontSize: 18)),
         Text(
           value,
           style: TextStyle(
