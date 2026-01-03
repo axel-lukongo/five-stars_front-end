@@ -95,7 +95,7 @@ class _LoginPageState extends State<LoginPage> {
                     height: 150,
                   ),
                   const Text(
-                    "FIVE-STAR",
+                    "FIVE-STAR \n      5v5",
                     style: TextStyle(
                       fontSize: 30,
                       color: myAccentVibrantBlue,
