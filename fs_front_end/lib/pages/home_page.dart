@@ -110,25 +110,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   static const double _playerAvatarRadius = 28;
-  static const double _playerAvatarDiameter = _playerAvatarRadius * 2;
 
   bool _isLookingForOpponent = false;
   bool _isLoadingSearchPrefs = false;
   TeamSearchPreference? _searchPreference;
   int? _lastLoadedTeamId;
   List<MatchChallenge> _upcomingMatches = [];
-  bool _isLoadingMatches = false;
   Map<int, int> _unreadMatchMessages = {};
-
-  late AnimationController _fadeController;
 
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    )..forward();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final provider = context.read<TeamsProvider>();
@@ -212,7 +204,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     final provider = context.read<TeamsProvider>();
     final team = provider.currentDisplayedTeam;
     if (team == null) return;
-    setState(() => _isLoadingMatches = true);
+    // Suppression du setState inutilisé
     try {
       final matches = await TeamsService.instance.getTeamMatches(
         team.id,
@@ -221,11 +213,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _upcomingMatches = matches;
-          _isLoadingMatches = false;
+          // Suppression de l'affectation inutile
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoadingMatches = false);
+      // Suppression du setState inutile
     }
   }
 
@@ -1822,83 +1814,71 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
           child: LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final double pitchWidth = constraints.maxWidth;
-              const double pitchHeight = 280;
-              const double minPlayerLeftPos = 20;
-              final double maxPlayerLeftPos =
-                  (pitchWidth / 2) - _playerAvatarDiameter - 20;
-              final double segmentSpacing =
-                  (maxPlayerLeftPos - minPlayerLeftPos) / 4;
+              final double width = constraints.maxWidth;
+              final double height = constraints.maxHeight;
+              final double avatarRadius = (width / 13).clamp(18.0, 32.0);
+              final double avatarDiameter = avatarRadius * 2;
 
-              return Stack(
-                children: <Widget>[
-                  Positioned.fill(
-                    child: CustomPaint(
-                      painter: _ModernPitchPainter(
-                        Colors.white.withOpacity(0.25),
+              // Placement horizontal : gardien à gauche, défenseurs au centre, attaquants à droite
+              final List<List<int>> columns = [
+                [0], // Gardien (à gauche)
+                [1, 2], // Défenseurs (au centre)
+                [3, 4], // Attaquants (à droite)
+              ];
+
+              TeamMember? getMember(int slotIndex) {
+                try {
+                  return starters.firstWhere((m) => m.slotIndex == slotIndex);
+                } catch (_) {
+                  return null;
+                }
+              }
+
+              final double horizontalSpacing =
+                  (width - avatarDiameter * columns.length) /
+                  (columns.length + 1);
+              List<Widget> playerWidgets = [];
+              for (int i = 0; i < columns.length; i++) {
+                final column = columns[i];
+                final x =
+                    horizontalSpacing * (i + 1) +
+                    avatarRadius +
+                    avatarDiameter * i;
+                final count = column.length;
+                final verticalSpacing =
+                    (height - (count * avatarDiameter)) / (count + 1);
+                for (int j = 0; j < count; j++) {
+                  final y =
+                      verticalSpacing * (j + 1) +
+                      avatarRadius +
+                      avatarDiameter * j;
+                  final slotIndex = column[j];
+                  final member = getMember(slotIndex);
+                  playerWidgets.add(
+                    Positioned(
+                      left: x - avatarRadius,
+                      top: y - avatarRadius,
+                      child: _buildPlayerSlot(
+                        context,
+                        slotIndex: slotIndex,
+                        position: PlayerPosition.values[slotIndex],
+                        member: member,
+                        isDarkMode: isDarkMode,
+                        isEditable: isMyTeam,
                       ),
                     ),
+                  );
+                }
+              }
+
+              return Stack(
+                children: [
+                  // Terrain
+                  CustomPaint(
+                    size: Size(width, height),
+                    painter: _ModernPitchPainter(Colors.white.withOpacity(0.5)),
                   ),
-                  Positioned(
-                    left: minPlayerLeftPos,
-                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                    child: _buildPlayerSlot(
-                      context,
-                      slotIndex: 0,
-                      position: PlayerPosition.goalkeeper,
-                      member: _getMemberBySlot(starters, 0),
-                      isDarkMode: isDarkMode,
-                      isEditable: isMyTeam,
-                    ),
-                  ),
-                  Positioned(
-                    left: minPlayerLeftPos + segmentSpacing,
-                    top: pitchHeight * 0.25 - _playerAvatarRadius - 15,
-                    child: _buildPlayerSlot(
-                      context,
-                      slotIndex: 1,
-                      position: PlayerPosition.defender,
-                      member: _getMemberBySlot(starters, 1),
-                      isDarkMode: isDarkMode,
-                      isEditable: isMyTeam,
-                    ),
-                  ),
-                  Positioned(
-                    left: minPlayerLeftPos + segmentSpacing,
-                    top: pitchHeight * 0.75 - _playerAvatarRadius - 15,
-                    child: _buildPlayerSlot(
-                      context,
-                      slotIndex: 2,
-                      position: PlayerPosition.defender,
-                      member: _getMemberBySlot(starters, 2),
-                      isDarkMode: isDarkMode,
-                      isEditable: isMyTeam,
-                    ),
-                  ),
-                  Positioned(
-                    left: minPlayerLeftPos + 2 * segmentSpacing,
-                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                    child: _buildPlayerSlot(
-                      context,
-                      slotIndex: 3,
-                      position: PlayerPosition.midfielder,
-                      member: _getMemberBySlot(starters, 3),
-                      isDarkMode: isDarkMode,
-                      isEditable: isMyTeam,
-                    ),
-                  ),
-                  Positioned(
-                    left: minPlayerLeftPos + 3 * segmentSpacing,
-                    top: pitchHeight / 2 - _playerAvatarRadius - 15,
-                    child: _buildPlayerSlot(
-                      context,
-                      slotIndex: 4,
-                      position: PlayerPosition.forward,
-                      member: _getMemberBySlot(starters, 4),
-                      isDarkMode: isDarkMode,
-                      isEditable: isMyTeam,
-                    ),
-                  ),
+                  ...playerWidgets,
                 ],
               );
             },
@@ -2038,14 +2018,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ),
       ],
     );
-  }
-
-  TeamMember? _getMemberBySlot(List<TeamMember> members, int slotIndex) {
-    try {
-      return members.firstWhere((m) => m.slotIndex == slotIndex);
-    } catch (_) {
-      return null;
-    }
   }
 
   Widget _buildPlayerSlot(
@@ -3395,51 +3367,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       ),
     );
   }
-}
-
-class _PitchPainter extends CustomPainter {
-  final Color lineColor;
-  _PitchPainter(this.lineColor);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final Paint paint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 2.0
-      ..style = PaintingStyle.stroke;
-    canvas.drawRect(Rect.fromLTWH(0, 0, size.width, size.height), paint);
-    canvas.drawLine(
-      Offset(size.width / 2, 0),
-      Offset(size.width / 2, size.height),
-      paint,
-    );
-    canvas.drawCircle(
-      Offset(size.width / 2, size.height / 2),
-      size.height * 0.15,
-      paint,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        0,
-        size.height * 0.25,
-        size.width * 0.15,
-        size.height * 0.5,
-      ),
-      paint,
-    );
-    canvas.drawRect(
-      Rect.fromLTWH(
-        size.width * 0.85,
-        size.height * 0.25,
-        size.width * 0.15,
-        size.height * 0.5,
-      ),
-      paint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
 class _ModernPitchPainter extends CustomPainter {

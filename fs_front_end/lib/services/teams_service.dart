@@ -1210,11 +1210,11 @@ enum PlayerPosition {
       case PlayerPosition.defender:
         return 'D';
       case PlayerPosition.midfielder:
-        return 'M';
+        return 'D';
       case PlayerPosition.forward:
         return 'A';
       case PlayerPosition.substitute:
-        return 'R';
+        return 'A';
     }
   }
 }
