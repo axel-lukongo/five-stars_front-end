@@ -312,6 +312,22 @@ class TeamsProvider with ChangeNotifier {
     return success;
   }
 
+  /// Permet à l'utilisateur de quitter une équipe (si non propriétaire)
+  Future<bool> leaveTeam(int teamId) async {
+    final success = await _teamsService.leaveTeam(teamId);
+
+    if (success) {
+      // Retirer l'équipe de la liste des équipes dont je suis membre
+      _teamsMemberOf.removeWhere((t) => t.id == teamId);
+      // Retirer aussi du chat
+      _myTeamChats.removeWhere((c) => c.teamId == teamId);
+      _teamMessages.remove(teamId);
+      notifyListeners();
+    }
+
+    return success;
+  }
+
   /// Met à jour la position d'un membre dans "Mon Équipe"
   Future<bool> updateMemberPosition({
     required int userId,

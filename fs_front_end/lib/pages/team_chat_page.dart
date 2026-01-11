@@ -9,12 +9,14 @@ class TeamChatPage extends StatefulWidget {
   final int teamId;
   final String teamName;
   final String? teamLogoUrl;
+  final int? ownerId; // ID du propriétaire de l'équipe
 
   const TeamChatPage({
     super.key,
     required this.teamId,
     required this.teamName,
     this.teamLogoUrl,
+    this.ownerId,
   });
 
   @override
@@ -109,6 +111,7 @@ class _TeamChatPageState extends State<TeamChatPage> {
         : Colors.grey[200]!;
 
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final isOwner = widget.ownerId != null && currentUserId == widget.ownerId;
 
     return Scaffold(
       appBar: AppBar(
@@ -154,6 +157,86 @@ class _TeamChatPageState extends State<TeamChatPage> {
       ),
       body: Column(
         children: <Widget>[
+          // ===== EN-TÊTE AVEC BADGE MEMBRE ET BOUTON QUITTER =====
+          if (!isOwner)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: isDarkMode
+                    ? Colors.grey[850]?.withOpacity(0.5)
+                    : Colors.grey[100],
+                border: Border(
+                  bottom: BorderSide(
+                    color: isDarkMode
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.grey.withOpacity(0.2),
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  // Badge "Membre"
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.orange.withOpacity(0.3),
+                          Colors.orange.withOpacity(0.2),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          '👤 Membre',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.orange,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  // Bouton "Quitter l'équipe"
+                  TextButton.icon(
+                    onPressed: () => _showLeaveTeamDialog(context),
+                    icon: Icon(
+                      Icons.exit_to_app,
+                      size: 18,
+                      color: Colors.red[700],
+                    ),
+                    label: Text(
+                      'Quitter l\'équipe',
+                      style: TextStyle(
+                        color: Colors.red[700],
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      backgroundColor: Colors.red.withOpacity(0.1),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // ===== LISTE DES MESSAGES =====
           Expanded(
             child: Consumer<TeamsProvider>(
@@ -243,15 +326,19 @@ class _TeamChatPageState extends State<TeamChatPage> {
                               ),
                             ),
                           ),
-                        _buildMessageBubble(
-                          message,
-                          isSender,
-                          showSenderName,
-                          senderBubbleColor,
-                          otherBubbleColor,
-                          textColor,
-                          isDarkMode,
-                        ),
+                        // Message système (ex: "X a quitté l'équipe")
+                        if (message.isSystemMessage)
+                          _buildSystemMessage(message, isDarkMode)
+                        else
+                          _buildMessageBubble(
+                            message,
+                            isSender,
+                            showSenderName,
+                            senderBubbleColor,
+                            otherBubbleColor,
+                            textColor,
+                            isDarkMode,
+                          ),
                       ],
                     );
                   },
@@ -320,6 +407,49 @@ class _TeamChatPageState extends State<TeamChatPage> {
                   );
                 },
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Widget pour afficher un message système
+  Widget _buildSystemMessage(TeamChatMessage message, bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: isDarkMode
+            ? Colors.grey[800]?.withOpacity(0.5)
+            : Colors.grey[200]?.withOpacity(0.8),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: isDarkMode
+              ? Colors.grey[600]!.withOpacity(0.3)
+              : Colors.grey[400]!.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.info_outline,
+            size: 16,
+            color: isDarkMode ? Colors.grey[400] : Colors.grey[600],
+          ),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              message.content,
+              style: TextStyle(
+                color: isDarkMode ? Colors.grey[400] : Colors.grey[700],
+                fontSize: 13,
+                fontStyle: FontStyle.italic,
+              ),
+              textAlign: TextAlign.center,
             ),
           ),
         ],
@@ -426,6 +556,76 @@ class _TeamChatPageState extends State<TeamChatPage> {
           ],
         ),
       ),
+    );
+  }
+
+  /// Affiche une boîte de dialogue pour confirmer la sortie de l'équipe
+  void _showLeaveTeamDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Quitter l\'équipe'),
+          content: Text(
+            'Êtes-vous sûr de vouloir quitter "${widget.teamName}" ?\n\n'
+            'Vous ne recevrez plus les messages de cette équipe.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Fermer la boîte de dialogue
+
+                // Afficher un indicateur de chargement
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext context) {
+                    return const Center(child: CircularProgressIndicator());
+                  },
+                );
+
+                // Quitter l'équipe
+                final provider = context.read<TeamsProvider>();
+                final success = await provider.leaveTeam(widget.teamId);
+
+                // Fermer l'indicateur de chargement
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+
+                  if (success) {
+                    // Retourner à la page précédente
+                    Navigator.of(context).pop();
+
+                    // Afficher un message de succès
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Vous avez quitté l\'équipe "${widget.teamName}"',
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    // Afficher un message d'erreur
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Erreur lors de la sortie de l\'équipe'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Quitter'),
+            ),
+          ],
+        );
+      },
     );
   }
 

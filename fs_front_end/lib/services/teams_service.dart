@@ -238,6 +238,21 @@ class TeamsService {
     }
   }
 
+  /// Permet à l'utilisateur actuel de quitter une équipe
+  Future<bool> leaveTeam(int teamId) async {
+    try {
+      final response = await http.delete(
+        Uri.parse('$baseUrl/$teamId/leave'),
+        headers: await _headers,
+      );
+
+      return response.statusCode == 204;
+    } catch (e) {
+      debugPrint('Erreur leaveTeam: $e');
+      return false;
+    }
+  }
+
   // ============================================================
   // Mon Équipe (équipe par défaut)
   // ============================================================

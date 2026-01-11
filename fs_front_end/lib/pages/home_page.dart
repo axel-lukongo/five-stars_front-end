@@ -1334,6 +1334,81 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// Affiche une boîte de dialogue pour confirmer la sortie de l'équipe
+  void _showLeaveTeamDialog(
+    BuildContext context,
+    TeamDetail team,
+    TeamsProvider teamsProvider,
+  ) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Quitter l\'équipe'),
+          content: Text(
+            'Êtes-vous sûr de vouloir quitter "${team.name}" ?\n\n'
+            'Vous ne recevrez plus les messages de cette équipe et ne pourrez plus participer aux matchs.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Annuler'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(
+                  dialogContext,
+                ).pop(); // Fermer la boîte de dialogue
+
+                // Afficher un indicateur de chargement
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext loadingContext) {
+                    return const Center(child: CircularProgressIndicator());
+                  },
+                );
+
+                // Quitter l'équipe
+                final success = await teamsProvider.leaveTeam(team.id);
+
+                // Fermer l'indicateur de chargement
+                if (context.mounted) {
+                  Navigator.of(context).pop();
+
+                  if (success) {
+                    // Recharger les équipes
+                    await teamsProvider.loadMyTeam();
+
+                    // Afficher un message de succès
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Vous avez quitté l\'équipe "${team.name}"',
+                        ),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  } else {
+                    // Afficher un message d'erreur
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Erreur lors de la sortie de l\'équipe'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
+              child: const Text('Quitter'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
@@ -1487,6 +1562,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   teamId: team.id,
                   teamName: team.name,
                   teamLogoUrl: team.logoUrl,
+                  ownerId: team.ownerId,
                 ),
               ),
             );
@@ -1610,36 +1686,90 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       Expanded(
                         child: Column(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  colors: isMyTeam
-                                      ? [
-                                          myAccentVibrantBlue.withOpacity(0.3),
-                                          myAccentVibrantBlue.withOpacity(0.2),
-                                        ]
-                                      : [
-                                          Colors.orange.withOpacity(0.3),
-                                          Colors.orange.withOpacity(0.2),
+                            // Badge "Mon équipe" ou "Membre" avec bouton "Quitter" si membre
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: isMyTeam
+                                          ? [
+                                              myAccentVibrantBlue.withOpacity(
+                                                0.3,
+                                              ),
+                                              myAccentVibrantBlue.withOpacity(
+                                                0.2,
+                                              ),
+                                            ]
+                                          : [
+                                              Colors.orange.withOpacity(0.3),
+                                              Colors.orange.withOpacity(0.2),
+                                            ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    isMyTeam ? '👑 Mon équipe' : '👤 Membre',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: isMyTeam
+                                          ? myAccentVibrantBlue
+                                          : Colors.orange,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: 0.5,
+                                    ),
+                                  ),
+                                ),
+                                // Bouton "Quitter l'équipe" si l'utilisateur est membre (non propriétaire)
+                                if (!isMyTeam && currentTeam != null) ...[
+                                  const SizedBox(width: 8),
+                                  GestureDetector(
+                                    onTap: () => _showLeaveTeamDialog(
+                                      context,
+                                      currentTeam,
+                                      teamsProvider,
+                                    ),
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 10,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.red.withOpacity(0.3),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.exit_to_app,
+                                            size: 14,
+                                            color: Colors.red[700],
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'Quitter',
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.red[700],
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
                                         ],
-                                ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                isMyTeam ? '👑 Mon équipe' : '👤 Membre',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: isMyTeam
-                                      ? myAccentVibrantBlue
-                                      : Colors.orange,
-                                  fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.5,
-                                ),
-                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                             const SizedBox(height: 12),
                             Row(

@@ -9,8 +9,8 @@ services:
     ports:
       - "8080:80"
     environment:
-      AUTH_URL: "http://my-public-alb-2023565607.eu-west-3.elb.amazonaws.com/auth"
-      FRIENDS_URL: "http://my-public-alb-2023565607.eu-west-3.elb.amazonaws.com/friends"
-      MESSAGES_URL: "http://my-public-alb-2023565607.eu-west-3.elb.amazonaws.com/messages"
-      TEAMS_URL: "http://my-public-alb-2023565607.eu-west-3.elb.amazonaws.com/teams"
+      AUTH_URL: "http://my-public-alb-321641182.eu-west-3.elb.amazonaws.com/auth"
+      FRIENDS_URL: "http://my-public-alb-321641182.eu-west-3.elb.amazonaws.com/friends"
+      MESSAGES_URL: "http://my-public-alb-321641182.eu-west-3.elb.amazonaws.com/messages"
+      TEAMS_URL: "http://my-public-alb-321641182.eu-west-3.elb.amazonaws.com/teams"
     
