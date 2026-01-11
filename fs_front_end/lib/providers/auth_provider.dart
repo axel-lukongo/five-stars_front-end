@@ -81,6 +81,22 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Supprime le compte de l'utilisateur
+  Future<bool> deleteAccount() async {
+    try {
+      final success = await _service.deleteAccount();
+      if (success) {
+        _isAuthenticated = false;
+        _currentUser = null;
+        notifyListeners();
+      }
+      return success;
+    } catch (e) {
+      debugPrint('Erreur deleteAccount: $e');
+      return false;
+    }
+  }
+
   Future<void> logout() async {
     await _service.logout();
     _isAuthenticated = false;

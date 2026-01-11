@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
@@ -258,5 +259,40 @@ class AuthService {
       return jsonDecode(resp.body) as Map<String, dynamic>;
     }
     return null;
+  }
+
+  /// Supprime le compte de l'utilisateur connecté
+  Future<bool> deleteAccount() async {
+    final authHeader = await getAuthHeader();
+    if (authHeader == null) return false;
+
+    try {
+      final url = Uri.parse('$baseUrl/me');
+      final resp = await http
+          .delete(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': authHeader,
+            },
+          )
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('Timeout lors de la suppression du compte');
+            },
+          );
+
+      if (resp.statusCode == 204 || resp.statusCode == 200) {
+        await _clearTokens();
+        return true;
+      }
+
+      debugPrint('Erreur deleteAccount: ${resp.statusCode} - ${resp.body}');
+      return false;
+    } catch (e) {
+      debugPrint('Exception deleteAccount: $e');
+      return false;
+    }
   }
 }

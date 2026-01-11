@@ -7,7 +7,7 @@ import '../providers/theme_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/user_model.dart';
 import '../auth/login.dart';
-import 'edit_profile_page.dart';
+import 'settings_page.dart';
 
 class ProfilePage extends StatelessWidget {
   Widget _buildGlassContainer({
@@ -125,13 +125,15 @@ class ProfilePage extends StatelessWidget {
               ),
               IconButton(
                 icon: Icon(
-                  Icons.edit_outlined,
+                  Icons.settings_outlined,
                   color: isDarkMode ? myAccentVibrantBlue : MyprimaryDark,
                 ),
                 onPressed: () {
                   Navigator.push(
                     context,
-                    MaterialPageRoute(builder: (_) => const EditProfilePage()),
+                    MaterialPageRoute(
+                      builder: (_) => SettingsPage(authProvider: authProvider),
+                    ),
                   );
                 },
               ),

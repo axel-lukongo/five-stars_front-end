@@ -19,7 +19,9 @@ import '../main_screen.dart';
 // ); // Noir très sombre pour le Dark
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  final String? successMessage;
+
+  const LoginPage({super.key, this.successMessage});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -28,6 +30,25 @@ class LoginPage extends StatefulWidget {
 class _LoginPageState extends State<LoginPage> {
   final usernameController = TextEditingController();
   final passwordController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    // Afficher le message de succès si présent
+    if (widget.successMessage != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(widget.successMessage!),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      });
+    }
+  }
 
   @override
   void dispose() {
