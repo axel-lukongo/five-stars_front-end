@@ -794,13 +794,6 @@ class TeamsService {
           'message': message,
         }),
       );
-
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        return MatchChallenge.fromJson(jsonDecode(response.body));
-      }
-      return null;
-    } catch (e) {
-      debugPrint('Erreur createChallenge: $e');
       return null;
     }
   }
@@ -941,6 +934,50 @@ class TeamsService {
       return [];
     } catch (e) {
       debugPrint('Erreur getTeamMatches: $e');
+      return [];
+    }
+  }
+
+  /// Récupère les joueurs en commun entre deux équipes
+  Future<List<String>> getCommonPlayers(int teamId, int opponentTeamId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('$baseUrl/$opponentTeamId/public-members'),
+        headers: await _headers,
+      );
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+
+        // Récupérer aussi les joueurs de notre équipe
+        final myTeamResponse = await http.get(
+          Uri.parse('$baseUrl/$teamId'),
+          headers: await _headers,
+        );
+
+        if (myTeamResponse.statusCode == 200) {
+          final myTeamData = jsonDecode(myTeamResponse.body);
+          final myTeamMembers = (myTeamData['members'] as List<dynamic>)
+              .map((m) => (m['user']['username'] as String).toLowerCase())
+              .toSet();
+
+          // Récupérer les joueurs adverses et trouver les doublons
+          final opponentMembers = (data as List<dynamic>)
+              .map((m) => (m['user']['username'] as String).toLowerCase())
+              .toSet();
+
+          final commonPlayers = myTeamMembers
+              .intersection(opponentMembers)
+              .toList();
+          commonPlayers.sort();
+
+          return commonPlayers;
+        }
+      }
+      // Si l'endpoint n'existe pas (404) ou pas d'accès (403), retourner liste vide
+      return [];
+    } catch (e) {
+      debugPrint('Erreur getCommonPlayers: $e');
       return [];
     }
   }

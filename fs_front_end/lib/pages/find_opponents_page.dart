@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:ui';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../theme_config/colors_config.dart';
 import '../services/teams_service.dart';
+import '../providers/teams_provider.dart';
 
 /// Page pour trouver des adversaires et gérer les défis
 class FindOpponentsPage extends StatefulWidget {
@@ -808,8 +811,7 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
                       const SizedBox(width: 12),
                       Expanded(
                         child: ElevatedButton.icon(
-                          onPressed: () =>
-                              _respondToChallenge(challenge.id, true),
+                          onPressed: () => _handleAcceptChallenge(challenge),
                           icon: const Icon(Icons.check, size: 18),
                           label: const Text('Accepter'),
                           style: ElevatedButton.styleFrom(
@@ -1570,7 +1572,6 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
                 ),
                 ElevatedButton(
                   onPressed: () async {
-                    Navigator.pop(context);
                     await _sendChallenge(
                       team.teamId,
                       proposedDate: selectedDate,
@@ -1581,6 +1582,9 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
                           ? null
                           : messageController.text,
                     );
+                    if (mounted) {
+                      Navigator.pop(context);
+                    }
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: myAccentVibrantBlue,
@@ -1783,12 +1787,152 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
     );
   }
 
+  /// Récupère les joueurs en commun entre la propre équipe et l'équipe adverse
+  Future<List<String>> _getCommonPlayers(int opponentTeamId) async {
+    try {
+      final teamsProvider = context.read<TeamsProvider>();
+      final myTeam = teamsProvider.currentDisplayedTeam;
+
+      if (myTeam == null) {
+        return [];
+      }
+
+      // Appeler l'endpoint du service pour récupérer les joueurs en commun
+      final commonPlayers = await TeamsService.instance.getCommonPlayers(
+        myTeam.id,
+        opponentTeamId,
+      );
+
+      return commonPlayers;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// Affiche une alerte avec les joueurs en commun
+  Future<bool?> _showCommonPlayersAlert(
+    String opponentTeamName,
+    List<String> commonPlayers,
+    String actionText,
+  ) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Icon(Icons.warning, color: Colors.orange, size: 32),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 12),
+              Text(
+                'Attention !',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'L\'équipe "$opponentTeamName" partage ${commonPlayers.length} joueur(s) avec votre équipe :',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: commonPlayers.map((player) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.person,
+                            size: 16,
+                            color: Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              player,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Voulez-vous tout de même continuer ?',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(fontStyle: FontStyle.italic),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: Text(actionText),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _sendChallenge(
     int teamId, {
     DateTime? proposedDate,
     String? proposedLocation,
     String? message,
   }) async {
+    // Vérifier s'il y a des joueurs en commun
+    final commonPlayers = await _getCommonPlayers(teamId);
+
+    if (commonPlayers.isNotEmpty && mounted) {
+      final opponentTeamName = _opponents
+          .firstWhere(
+            (t) => t.teamId == teamId,
+            orElse: () => TeamSearchResult(
+              teamId: teamId,
+              teamName: 'Équipe adverse',
+              ownerUsername: '',
+              membersCount: 0,
+            ),
+          )
+          .teamName;
+
+      final confirmed = await _showCommonPlayersAlert(
+        opponentTeamName,
+        commonPlayers,
+        'Envoyer le défi',
+      );
+
+      if (confirmed != true) {
+        return;
+      }
+    }
+
     final result = await TeamsService.instance.createChallenge(
       challengedTeamId: teamId,
       proposedDate: proposedDate,
@@ -1844,6 +1988,36 @@ class _FindOpponentsPageState extends State<FindOpponentsPage>
         _loadData();
       }
     }
+  }
+
+  /// Gère l'acceptation d'un défi avec vérification des joueurs en commun
+  Future<void> _handleAcceptChallenge(MatchChallenge challenge) async {
+    final opponentTeamId =
+        challenge.challengerTeamId ==
+            context.read<TeamsProvider>().currentDisplayedTeam?.id
+        ? challenge.challengedTeamId
+        : challenge.challengerTeamId;
+
+    final opponentTeamName =
+        challenge.challengerTeamId ==
+            context.read<TeamsProvider>().currentDisplayedTeam?.id
+        ? challenge.challengedTeamName
+        : challenge.challengerTeamName;
+
+    // Vérifier s'il y a des joueurs en commun
+    final commonPlayers = await _getCommonPlayers(opponentTeamId);
+
+    if (commonPlayers.isNotEmpty && mounted) {
+      final confirmed = await _showCommonPlayersAlert(
+        opponentTeamName,
+        commonPlayers,
+        'Accepter le défi',
+      );
+
+      if (confirmed != true) return;
+    }
+
+    await _respondToChallenge(challenge.id, true);
   }
 
   Future<void> _respondToChallenge(int challengeId, bool accept) async {
