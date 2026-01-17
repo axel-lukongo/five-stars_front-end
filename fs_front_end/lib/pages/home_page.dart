@@ -875,6 +875,18 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               ),
             ),
           ],
+          // Bouton d'annulation du match (visible pour tout le monde)
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: isOwner ? () => _cancelMatch(match) : null,
+            icon: const Icon(Icons.close, size: 18),
+            label: const Text('Annuler le match'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: BorderSide(color: isOwner ? Colors.red : Colors.grey),
+              padding: const EdgeInsets.symmetric(vertical: 10),
+            ),
+          ),
         ],
       ),
     );
@@ -1323,6 +1335,57 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         _loadUpcomingMatches();
       }
     }
+  }
+
+  /// Annule un match (même accepté)
+  Future<void> _cancelMatch(MatchChallenge match) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Annuler le match'),
+        content: Text(
+          'Êtes-vous sûr de vouloir annuler le match contre ${match.getOpponentName(_getMyTeamIdFromMatch(match))} ?\n\n'
+          'Cette action ne peut pas être annulée.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Non'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Oui, annuler le match'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      final success = await TeamsService.instance.cancelChallenge(match.id);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Match annulé'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        _loadUpcomingMatches();
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Erreur lors de l\'annulation du match'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Helper pour obtenir l'ID de mon équipe à partir d'un match
+  int _getMyTeamIdFromMatch(MatchChallenge match) {
+    final provider = context.read<TeamsProvider>();
+    return provider.currentDisplayedTeam?.id ?? match.challengerTeamId;
   }
 
   @override

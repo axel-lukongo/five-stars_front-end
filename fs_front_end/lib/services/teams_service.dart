@@ -945,15 +945,15 @@ class TeamsService {
     }
   }
 
-  /// Annule un défi
+  /// Annule un défi (même accepté)
   Future<bool> cancelChallenge(int challengeId) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/challenges/$challengeId'),
+      final response = await http.patch(
+        Uri.parse('$baseUrl/challenges/$challengeId/cancel'),
         headers: await _headers,
       );
 
-      return response.statusCode == 200;
+      return response.statusCode == 200 || response.statusCode == 201;
     } catch (e) {
       debugPrint('Erreur cancelChallenge: $e');
       return false;

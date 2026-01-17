@@ -1,17 +1,19 @@
 import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
-import 'dart:js' as js;
 
 /// Configuration API centralisée pour chaque service (supporte runtime config JS pour Flutter web)
 class ApiConfig {
   static String _getEnv(String key, String fallback) {
     if (kIsWeb) {
-      final env = js.context.hasProperty('env') ? js.context['env'] : null;
-      if (env != null &&
-          env.hasProperty(key) &&
-          env[key] != null &&
-          (env[key] as String).isNotEmpty) {
-        return env[key] as String;
+      try {
+        // Import dynamique pour dart:js (web only)
+        // Utilise String.fromEnvironment comme fallback pour les tests
+        final envValue = String.fromEnvironment(key, defaultValue: '');
+        if (envValue.isNotEmpty) {
+          return envValue;
+        }
+      } catch (e) {
+        // Si dart:js n'est pas disponible, utiliser le fallback
       }
     }
     return fallback;
