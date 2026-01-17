@@ -877,14 +877,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
           ],
           // Bouton d'annulation du match (visible pour tout le monde)
           const SizedBox(height: 12),
-          OutlinedButton.icon(
+          ElevatedButton.icon(
             onPressed: isOwner ? () => _cancelMatch(match) : null,
             icon: const Icon(Icons.close, size: 18),
             label: const Text('Annuler le match'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: Colors.red,
-              side: BorderSide(color: isOwner ? Colors.red : Colors.grey),
-              padding: const EdgeInsets.symmetric(vertical: 10),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(double.infinity, 44),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
           ),
         ],
