@@ -794,6 +794,13 @@ class TeamsService {
           'message': message,
         }),
       );
+
+      if (response.statusCode == 201) {
+        return MatchChallenge.fromJson(jsonDecode(response.body));
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Erreur createChallenge: $e');
       return null;
     }
   }
